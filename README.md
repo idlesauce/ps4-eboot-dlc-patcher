@@ -7,6 +7,7 @@ This is a quick and dirty script and its also not the best way to achieve this, 
 - Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10
 - Requires nasm.exe (https://www.nasm.us/)
 - Useful for extracting and repacking pkgs: https://www.psxhax.com/threads/ps4-patch-builder-for-building-modded-update-pkgs-by-modded-warfare.7112/
+  https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file
 - selfutil
 
 
