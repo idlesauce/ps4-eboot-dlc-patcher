@@ -4,7 +4,7 @@ Patches `sceAppContentGetAddcontInfoList`, `sceAppContentAddcontMount` and `sceA
 
 This is a quick and dirty script and its also not the best way to achieve this, since it needs strings (of a certains minimum length) that are not important, which means its possible some games wont work with this. If i have time i might update this with a better method.
 
-- Requires IDA Pro 7.5-8.3 with https://github.com/SocraticBliss/ps4_module_loader plugin installed
+- Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10
 - Requires nasm.exe (https://www.nasm.us/)
 - Useful for extracting and repacking pkgs: https://www.psxhax.com/threads/ps4-patch-builder-for-building-modded-update-pkgs-by-modded-warfare.7112/
 - selfutil
