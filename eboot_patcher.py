@@ -167,7 +167,7 @@ if manually_select_strings:
     temp.sort(key=lambda s: s.length, reverse=True)
     chooser = MyChooser("Choose the string to patch [3] (dlc list)", [(str(s), s.length,s.ea) for s in temp])
     chooser.Show(True)
-    dlc_list_target_string = next((s for s in all_strings if s.ea == chooser.selection[2]), None)
+    dlc_list_target_string = next((s for s in temp if s.ea == chooser.selection[2]), None)
     if dlc_list_target_string is None:
         ida_kernwin.warning("No string selected")
         exit()
