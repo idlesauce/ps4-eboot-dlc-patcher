@@ -8,7 +8,6 @@ Patches `sceAppContentGetAddcontInfoList`, `sceAppContentAddcontMount` and `sceA
 This is a quick and dirty script and its also not the best way to achieve this, since it needs strings (of a certains minimum length) that are not important, which means its possible some games wont work with this. If i have time i might update this with a better method.
 
 - Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10
-- Requires nasm.exe (https://www.nasm.us/)
 - Useful for extracting and repacking pkgs: https://www.psxhax.com/threads/ps4-patch-builder-for-building-modded-update-pkgs-by-modded-warfare.7112/
   https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file
 - selfutil
@@ -22,13 +21,12 @@ This is a quick and dirty script and its also not the best way to achieve this, 
 1. Follow the instructions, if you see `Patching complete` you're good.
 1. Extract all files from the update pkg.
 1. Replace the eboot.bin from the extracted update pkg's Image0 folder with our patched one (rename to eboot.bin)
-1. During the patching process you were asked to input a list of content ids, the order of these are the order the new dlc folder should be like:
+1. During the patching process you were asked to input a list of content ids. In the extracted update's Image0 folder, create new folders named the content ids (these folders should be in the same folder where the eboot.bin is.), and copy in the contents of the respective dlc's Image0 folder.
     ```
-    GEDLC00000000001 -> dlc0/
-    TRAUMAPACK000000 -> dlc1/
-    GEPREDLC00000001 -> dlc2/
+    GEDLC00000000001
+    TRAUMAPACK000000
+    GEPREDLC00000001
     ```
-    Create these folders in the extracted update's Image0 folder, then extract the contents of each dlc's Image0 to their respective dlcx/ folder
 1. Repack update pkg and you're done
 
 ## Notes:

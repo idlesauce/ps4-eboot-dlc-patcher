@@ -59,53 +59,22 @@ def format_displacement(n,target_length=4):
     return n_bytes
 
 
-def build_comparer_assembly(check_last_4_chars=False):
-    result = ""
-    if check_last_4_chars:
-        result += "mov eax, dword [rsi + 12]\n"
-    else:
-        result += "mov eax, dword [rsi]\n"
-    for i in range(len(dlc_list)):
-        # get the ascii value of the first 4 characters reversed
-        if check_last_4_chars:
-            result += f"cmp eax, 0x{get_hex(dlc_list[i][15])}{get_hex(dlc_list[i][14])}{get_hex(dlc_list[i][13])}{get_hex(dlc_list[i][12])}\n"
-        else:
-            result += f"cmp eax, 0x{get_hex(dlc_list[i][3])}{get_hex(dlc_list[i][2])}{get_hex(dlc_list[i][1])}{get_hex(dlc_list[i][0])}\n"
-        result += f"je copy_dlc{i}\n"
-    result += "jmp end\n"
+def get_mount_handler_asm_bytes():
+    # copy in /app0/ then copy in the content id (from rsi), then copy in / and null terminate
+    # mov dword ptr [rdx], 0x7070612F
+    # mov word ptr [rdx+4], 0x2F30
+    # mov rax, qword ptr [rsi]
+    # mov qword ptr [rdx+6], rax
+    # mov rax, qword ptr [rsi+8] 
+    # mov qword ptr [rdx+14], rax
+    # mov word ptr [rdx+22], 0x002F
+    # xor eax, eax
+    # ret
+    return bytes(b'\xC7\x02\x2F\x61\x70\x70\x66\xC7\x42\x04\x30\x2F\x48\x8B\x06\x48\x89\x42\x06\x48\x8B\x46\x08\x48\x89\x42\x0E\x66\xC7\x42\x16\x2F\x00\x31\xC0\xC3')
 
-    for i in range(len(dlc_list)):
-        result += f"copy_dlc{i}:\n"
-        result += f"mov eax, 0x002F{get_hex(str(i))}63\n"
-        result += f"mov dword [rdx + 8], eax\n"
-        # if not last dlc
-        if i != len(dlc_list) - 1:
-            result += f"jmp copy_common\n"   
-
-    result += "copy_common:\n"
-    result += "mov rax, 0x6C642F307070612F\n"
-    result += "mov qword [rdx], rax\n"
-    result += "xor eax,eax\n"
-    result += "mov dword [rdx + 12], eax\n"
-    result += "end:\n"
-    result += "xor eax, eax\n"
-    result += "ret\n"
-    return result
-
-def run_command_and_capture_output(command):
-    completed_process = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    return completed_process.stdout
-
-# test_strings = [["test1 - saakjfbweuoqbxqcNAV",10], ["test2 - saakjfbweuoqbxqcNAV",10], ["test3 - saakjfbweuoqbxqcNAV",10], ["test4 - saakjfbweuoqbxqcNAV",10], ["test5 - saakjfbweuoqbxqcNAV",10], ["test6 - saakjfbweuoqbxqcNAV",10], ["test7 - saakjfbweuoqbxqcNAV",10], ["test8 - saakjfbweuoqbxqcNAV",10], ["test9 - saakjfbweuoqbxqcNAV",10], ["test10 - saakjfbweuoqbxqcNAV",10]]
-# chooser = MyChooser("Choose the string to patch",test_strings)
-# chooser.Show(True)
-
-# exit()
-
-
-if not idaapi.auto_is_ok():
-    ida_kernwin.warning("Analysis isnt finished, please wait for it to finish before running this script")
-    exit()
+# if not idaapi.auto_is_ok():
+#     ida_kernwin.warning("Analysis isnt finished, please wait for it to finish before running this script")
+#     exit()
 
 manually_select_strings = False
 button_pressed = idaapi.ask_buttons("Automatic", "Manual", "Cancel", idaapi.ASKBTN_CANCEL, "Do you want to manually or automatically select the strings to use as space for new code?")
@@ -141,50 +110,7 @@ if len(dlc_list) > 10:
     ida_kernwin.warning("Too many DLCs, max of 10 is supported")
     exit()
 
-check_last_4_chars = False
-
-# check if any 2 have the same first 4 characters
-for i in range(len(dlc_list)):
-    for j in range(len(dlc_list)):
-        if i == j:
-            continue
-        if dlc_list[i][0:4] == dlc_list[j][0:4]:
-            check_last_4_chars = True
-            break
-
-# check if any 2 have the same last 4 characters
-if check_last_4_chars:
-    for i in range(len(dlc_list)):
-        for j in range(len(dlc_list)):
-            if i == j:
-                continue
-            if dlc_list[i][12:16] == dlc_list[j][12:16]:
-                ida_kernwin.warning("There are dlcs with the same first 4 and same last 4 characters. this is not supported")
-                exit()
-
-mount_handler_asm_raw_text = build_comparer_assembly()
-
-nasm_path = idaapi.ask_file(0, "*.exe", "Choose nasm executable")
-
-if nasm_path is None:
-    ida_kernwin.warning("No file selected")
-    exit()
-
-mount_handler_asm_file = get_random_temp_filename()
-with open(mount_handler_asm_file, "w") as f:
-    f.write("BITS 64\n")
-    f.write(mount_handler_asm_raw_text)
-
-mount_handler_asm_file_output = get_random_temp_filename()
-mount_assemble_result = run_command_and_capture_output(f"{nasm_path} -f bin -o {mount_handler_asm_file_output} {mount_handler_asm_file}")
-
-if mount_assemble_result != "":
-    ida_kernwin.warning(mount_assemble_result)
-    exit()
-
-with open(mount_handler_asm_file_output, "rb") as f:
-    mount_handler_asm_bytes = f.read()
-
+mount_handler_asm_bytes = get_mount_handler_asm_bytes()
 list_handler_asm_len = 53
 
 # get list of strings in the CODE section
@@ -287,10 +213,8 @@ target_offset = target - rip
 #     ret
 # """
 
-# preassembled because nasm doesnt support rip relative addressing, this doesnt change much anyways
 list_handler_asm_bytes = bytes.fromhex(f"48 85 D2 74 27 48 8D 15 {format_displacement_str(target_offset,4)} 48C7C1 {format_displacement_str(len(dlc_list) * 24,4)} 48C1E903488B024889064883C6084883C20848FFC975EDEB06C701 {format_displacement_str(len(dlc_list),1)} 00000031C0C3")
 
-    
 sceAppContentGetAddcontInfoList = idaapi.get_name_ea(idaapi.BADADDR, 'sceAppContentGetAddcontInfoList')
 
 sceAppContentGetAddcontInfoList_patches = []
@@ -299,6 +223,9 @@ for xref in idautils.XrefsTo(sceAppContentGetAddcontInfoList, 0):
     if xref.type == idaapi.fl_CF or xref.type == idaapi.fl_CN:
         sceAppContentGetAddcontInfoList_patches.append(xref)
 
+if len(sceAppContentGetAddcontInfoList_patches) == 0:
+    ida_kernwin.warning("No references to sceAppContentGetAddcontInfoList found, this likely means something went wrong in the decompilation step, exiting...")
+    exit()
 
 sceAppContentAddcontMount = idaapi.get_name_ea(idaapi.BADADDR, 'sceAppContentAddcontMount')
 
@@ -343,19 +270,21 @@ with open(output_file, "r+b") as f:
     f.write(dlc_list_bytes)
 
     for patch in sceAppContentGetAddcontInfoList_patches:
-        f.seek(get_real_address(patch.frm) + 1)
-        print(f"patching sceAppContentGetAddcontInfoList {get_real_address(patch.frm) + 1}")
+        f.seek(get_real_address(patch.frm))
+        f.write(b'\xE8')
+        print(f"patching sceAppContentGetAddcontInfoList ida: {get_hex(patch.frm)} | real: {get_hex(get_real_address(patch.frm))}")
         # if you see this and know where i fucked up the math that i need to subtract 10 please let me know
         f.write(format_displacement(list_handler_asm_target_string.ea + 2 - patch.frm + 5 - 10, 4))
 
     for patch in sceAppContentAddcontMount_patches:
-        f.seek(get_real_address(patch.frm) + 1)
-        print(f"patching sceAppContentAddcontMount {get_real_address(patch.frm) + 1}")
+        f.seek(get_real_address(patch.frm))
+        f.write(b'\xE8')
+        print(f"patching sceAppContentAddcontMount  ida: {get_hex(patch.frm)} | real: {get_hex(get_real_address(patch.frm))}")
         f.write(format_displacement(mount_handler_asm_target_string.ea + 2 - patch.frm + 5 -10,4))
 
     for patch in sceAppContentAddcontUnmount_patches:
         f.seek(get_real_address(patch.frm))
-        print(f"patching sceAppContentAddcontUnmount {get_real_address(patch.frm) + 1}")
+        print(f"patching sceAppContentAddcontUnmount ida: {get_hex(patch.frm)} | real: {get_hex(get_real_address(patch.frm))}")
         f.write(b'\xb8\x00\x00\x00\x00')
 
 ida_kernwin.info("Patching complete")
