@@ -29,8 +29,10 @@ This is a quick and dirty script and its also not the best way to achieve this, 
     ```
 1. Repack update pkg and you're done
 
+> Modded Warfare's how-to video: https://www.youtube.com/watch?v=9KKkhwATFe8
+ 
 ## Notes:
-- You can use Modded Warfare's Patch Builder to get the content id, itll look something like this:
+- You can use Modded Warfare's Patch Builder to get the content id, it'll look something like this:
 ```
 Content ID: UP0102-CUSA18017_00-GEDLC00000000001
 ```
