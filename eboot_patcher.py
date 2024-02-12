@@ -25,7 +25,7 @@ Enter content ids (16 char each)
         self.Execute()
 
 
-class MyChooser(idaapi.Choose):
+class StringChooser(idaapi.Choose):
     def __init__(self, title, items):
         idaapi.Choose.__init__(self, title, [["String", 50], [
                                "Length", 10]], width=60, height=20)
@@ -97,10 +97,7 @@ def get_mount_handler_asm_len(dlc_list):
     return len(get_mount_handler_asm_bytes(dlc_list, 0, 0))
 
 # this is a mess but i wanted to do it without needing an assembler
-
-
 def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
-    return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
     dlc_list_cmp_index = find_start_index_of_4_differing_chars([s for s, _ in dlc_list])
     if dlc_list_cmp_index == -1:
         return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
@@ -243,7 +240,6 @@ def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_l
     lea_rip_offset = address_containing_dlc_list - \
         (rip + bytes_before_lea_call + lea_call_length)
     return bytes.fromhex(f"4831C048890248894208488D3D{format_displacement_str(lea_rip_offset,4)}488B06488B5E084831C9483907750848395F087502EB0F48FFC14883F9{format_displacement_str(dlc_list_length,1)}74374883C718EBE448C7C02F617070C7022F617070C74204302F646CC64208634889D789C831D2B90A000000F7F1043088470980C23088570A31C0C3")
-    # return bytes.fromhex(f"4831C048890248894208488D3D{format_displacement_str(lea_rip_offset,4)}488B06488B5E084831C9483907750848395F087502EB0F48FFC14883F9{format_displacement_str(dlc_list_length,1)}74374883C718EBE448C7C02F617070C7022F617070C74204302F646CC64208634889D789C831D2B90A000000F7F1043088470980C23088570A31C0488B07488B5F080F0B") # crashtest
 
 # if not idaapi.auto_is_ok():
 #     ida_kernwin.warning("Analysis isnt finished, please wait for it to finish before running this script")
@@ -311,7 +307,7 @@ if manually_select_strings:
     temp = [s for s in strings_in_code_segment if s.length >=
             list_handler_asm_len + 2]
     temp.sort(key=lambda s: s.length, reverse=True)
-    chooser = MyChooser("Choose the string to patch [1] (list handler)", [
+    chooser = StringChooser("Choose the string to patch [1] (list handler)", [
                         (str(s), s.length, s.ea) for s in temp])
     chooser.Show(True)
     list_handler_asm_target_string = next(
@@ -323,7 +319,7 @@ if manually_select_strings:
     temp = [s for s in strings_in_code_segment if s.length >=
             mount_handler_asm_len + 2 and s.ea != list_handler_asm_target_string.ea]
     temp.sort(key=lambda s: s.length, reverse=True)
-    chooser = MyChooser("Choose the string to patch [2] (mount handler)", [
+    chooser = StringChooser("Choose the string to patch [2] (mount handler)", [
                         (str(s), s.length, s.ea) for s in temp])
     chooser.Show(True)
     mount_handler_asm_target_string = next(
@@ -364,7 +360,7 @@ if manually_select_strings:
     temp = [s for s in all_strings if s.length >= len(
         dlc_list_bytes) + 2 and s.ea != list_handler_asm_target_string.ea and s.ea != mount_handler_asm_target_string.ea]
     temp.sort(key=lambda s: s.length, reverse=True)
-    chooser = MyChooser("Choose the string to patch [3] (dlc list)", [
+    chooser = StringChooser("Choose the string to patch [3] (dlc list)", [
                         (str(s), s.length, s.ea) for s in temp])
     chooser.Show(True)
     dlc_list_target_string = next(
