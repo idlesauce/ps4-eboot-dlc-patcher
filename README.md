@@ -21,11 +21,11 @@ This is a quick and dirty script and its also not the best way to achieve this, 
 1. Follow the instructions, if you see `Patching complete` you're good.
 1. Extract all files from the update pkg.
 1. Replace the eboot.bin from the extracted update pkg's Image0 folder with our patched one (rename to eboot.bin)
-1. During the patching process you were asked to input a list of content ids. In the extracted update's Image0 folder, create new folders named the content ids (these folders should be in the same folder where the eboot.bin is.), and copy in the contents of the respective dlc's Image0 folder.
+1. During the patching process you were asked to input a list of content ids. For each of the content ids you entered in the box for `DLCs with extra data`, you'll need to create a new folder in Image0 named `dlcXX` where XX is the index from 0, in the same order you entered in the textbox. In this new folder youll need to copy the contents of the Image0 folder of the respective extracted dlc. See below for example:
     ```
-    GEDLC00000000001
-    TRAUMAPACK000000
-    GEPREDLC00000001
+    GEDLC00000000001 -> dlc00/
+    TRAUMAPACK000000 -> dlc01/
+    GEPREDLC00000001 -> dlc02/
     ```
 1. Repack update pkg and you're done
 
