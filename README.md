@@ -8,9 +8,11 @@ Patches `sceAppContentGetAddcontInfoList`, `sceAppContentAddcontMount` and `sceA
 This is a quick and dirty script and its also not the best way to achieve this, since it needs strings (of a certains minimum length) that are not important, which means its possible some games wont work with this. If i have time i might update this with a better method.
 
 - Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10
-- Useful for extracting and repacking pkgs: https://www.psxhax.com/threads/ps4-patch-builder-for-building-modded-update-pkgs-by-modded-warfare.7112/
-  https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file
+- Useful for extracting and repacking pkgs: 
+  - https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file
+  - https://www.psxhax.com/threads/ps4-patch-builder-for-building-modded-update-pkgs-by-modded-warfare.7112/
 - selfutil
+  - https://github.com/xSpecialFoodx/SelfUtil-Patched
 
 
 ## Usage:
@@ -31,10 +33,12 @@ This is a quick and dirty script and its also not the best way to achieve this, 
 
 ## Notes:
 - You can use Modded Warfare's Patch Builder to get the content id, itll look something like this:
-```
-Content ID: UP0102-CUSA18017_00-GEDLC00000000001
-```
-You need the last bit from it `GEDLC00000000001`
+  ```
+  Content ID: UP0102-CUSA18017_00-GEDLC00000000001
+  ```
+  You need the last bit from it `GEDLC00000000001`
+
+- Patch Builder also shows whether a dlc has extra data or not, or you can also see by checking if the dlc pkg has an Image0 folder or not.
 
 
 Credits to [jocover](https://github.com/jocover) for discovering the functions responsible for loading dlcs.
