@@ -103,6 +103,7 @@ def get_mount_handler_asm_len(dlc_list):
 def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
     dlc_list_cmp_index = find_start_index_of_4_differing_chars([s for s, _ in dlc_list])
     if dlc_list_cmp_index == -1:
+        print("Couldn't find 4 consecutive differing characters")
         return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
 
     result = b""
@@ -128,6 +129,7 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
         # i*8 to get the correct copy segment
         target_offset = ((len(dlc_list)*7 - (i+1)*7) + 2 + i*8)
         if target_offset > 255:
+            print("target_offset larger than 1 byte")
             return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
         dlc_list_cmp_bytes += format_displacement(target_offset, 1)
 
@@ -164,6 +166,7 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
             # one of these mov & jmp segments is 8 bytes
             jmp_target_offset = (len(dlc_list)*8) - ((i+1)*8) - 2
             if jmp_target_offset > 255:
+                print("jmp_target_offset larger than 1 byte")
                 return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
             copy_in_dlc_index_bytes += format_displacement(
                 jmp_target_offset, 1)
@@ -173,6 +176,7 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
     jmp_end_offset = len(copy_in_dlc_index_bytes) + \
         len(copy_common_bytes) + 2 - 2
     if jmp_end_offset > 255:
+        print("jmp_end_offset larger than 1 byte")
         return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
     result += b"\xEB"
     result += format_displacement(jmp_end_offset, 1)
@@ -191,12 +195,15 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
         rip, address_containing_dlc_list, len(dlc_list))
 
     if len(result) > len(fallback):
+        print("Fallback mount handler is shorter")
         return fallback
 
+    print("Using short mount handler")
     return result
 
 
 def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_list_length):
+    print("Using fallback mount handler")
     # xor rax,rax
     # mov qword ptr [rdx], rax
     # mov qword ptr [rdx+8], rax
@@ -351,11 +358,14 @@ else:
             "Couldn't find the strings needed for the patch. Retry in manual mode")
         exit()
 
+print(f"list_handler_asm_target_string ida: {get_hex(list_handler_asm_target_string.ea)} | real: {get_hex(get_real_address(list_handler_asm_target_string.ea))}")
+print(f"mount_handler_asm_target_string ida: {get_hex(mount_handler_asm_target_string.ea)} | real: {get_hex(get_real_address(mount_handler_asm_target_string.ea))}")
+
 dlc_list_bytes = b""
 for dlc in dlc_list:
-    # convert dlc to ascii bytes
+    # convert dlc content id to ascii bytes
     dlc_list_bytes += dlc[0].encode("ascii")
-    # append 4 null bytes
+    # append 4 null bytes (contentid is 16 bytes long + null terminator + 3 padding)
     dlc_list_bytes += b"\x00\x00\x00\x00"
     # status -> 4 = installed | 0 -> no extra data
     dlc_list_bytes += b"\x04\x00\x00\x00" if dlc[1] else b"\x00\x00\x00\x00"
@@ -390,6 +400,8 @@ else:
         ida_kernwin.warning(
             "Couldn't find the string needed for the patch. Retry in manual mode")
         exit()
+
+print(f"dlc_list_target_string ida: {get_hex(dlc_list_target_string.ea)} | real: {get_hex(get_real_address(dlc_list_target_string.ea))}")
 
 
 # new list handler code starts at list_handler_asm_target_string.ea + 2
@@ -442,7 +454,7 @@ sceAppContentAddcontMount_patches = []
 
 if len(sceAppContentAddcontMount) == 0:
     ida_kernwin.info(
-        "No references to sceAppContentAddcontMount found, this is okay if the dlc doesnt contain extra data, otherwise this likely means something went wrong in the decompilation step, exiting...")
+        "No references to sceAppContentAddcontMount found, this is okay none of the dlcs contain extra data, otherwise this likely means something went wrong in the decompilation step, exiting...")
 
 for xref in idautils.XrefsTo(sceAppContentAddcontMount, 0):
     if xref.type == idaapi.fl_CF or xref.type == idaapi.fl_CN:
