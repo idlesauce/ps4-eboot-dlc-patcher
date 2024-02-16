@@ -220,7 +220,7 @@ def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_l
     # inc rcx
     # cmp rcx, 3
     # je cleanup_and_ret
-    # add rdi, 24
+    # add rdi, 17
     # jmp loop
 
     # match_found:
@@ -246,7 +246,7 @@ def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_l
     bytes_before_lea_call = 10
     lea_rip_offset = address_containing_dlc_list - \
         (rip + bytes_before_lea_call + lea_call_length)
-    return bytes.fromhex(f"4831C048890248894208488D3D{format_displacement_str(lea_rip_offset,4)}488B06488B5E084831C9483907750848395F087502EB0F48FFC14883F9{format_displacement_str(dlc_list_length,1)}74374883C718EBE448C7C02F617070C7022F617070C74204302F646CC64208634889D789C831D2B90A000000F7F1043088470980C23088570A31C0C3")
+    return bytes.fromhex(f"4831C048890248894208488D3D{format_displacement_str(lea_rip_offset,4)}488B06488B5E084831C9483907750848395F087502EB0F48FFC14883F9{format_displacement_str(dlc_list_length,1)}74374883C711EBE448C7C02F617070C7022F617070C74204302F646CC64208634889D789C831D2B90A000000F7F1043088470980C23088570A31C0C3")
 
 if not idaapi.auto_is_ok():
     ida_kernwin.info("Analysis might not be finished, make sure in the bottom left (below the python button) it says idle.")
@@ -370,11 +370,9 @@ dlc_list_bytes = b""
 for dlc in dlc_list:
     # convert dlc content id to ascii bytes
     dlc_list_bytes += dlc[0].encode("ascii")
-    # append 4 null bytes (contentid is 16 bytes long + null terminator + 3 padding)
-    dlc_list_bytes += b"\x00\x00\x00\x00"
     # status -> 4 = installed | 0 -> no extra data
-    dlc_list_bytes += b"\x04\x00\x00\x00" if dlc[1] else b"\x00\x00\x00\x00"
-
+    dlc_list_bytes += b"\x04" if dlc[1] else b"\x00"
+    
 if manually_select_strings:
     temp = [s for s in all_strings if s.length >= len(
         dlc_list_bytes) + 2 and s.ea != list_handler_asm_target_string.ea and s.ea != mount_handler_asm_target_string.ea]
@@ -424,12 +422,18 @@ target_offset = target - rip
 #     jz handle_null
 #     push rcx
 #     lea rdx, [rip + 0x60]
-#     mov ch, 3
+#     mov ch, 1
 # loop:
 #         mov rax, qword ptr [rdx]
 #         mov qword ptr [rsi], rax
-#         add rsi, 8
-#         add rdx, 8
+#         mov rax, qword ptr [rdx+8]
+#         mov qword ptr [rsi+8], rax
+#         xor rax, rax
+#         mov qword ptr [rsi+16], rax
+#         mov ah, byte ptr [rdx+16]
+#         mov byte ptr [rsi+20], ah
+#         add rsi, 24
+#         add rdx, 17
 #         dec ch
 #         jnz loop
 #         pop rcx
@@ -440,7 +444,7 @@ target_offset = target - rip
 #     ret
 
 list_handler_asm_bytes = bytes.fromhex(
-    f"48 85 D2 74 1D 51 48 8D 15 {format_displacement_str(target_offset,4)} B5 {format_displacement_str(len(dlc_list)*3,1)} 488B024889064883C6084883C208FECD75EE59C701 {format_displacement_str(len(dlc_list),4)} 31C0C3")
+    f"48 85 D2 74 32 51 48 8D 15 {format_displacement_str(target_offset,4)} B5 {format_displacement_str(len(dlc_list),1)} 488B02488906488B4208488946084831C0488946108A62108866144883C6184883C211FECD75D959C701 {format_displacement_str(len(dlc_list),4)} 31C0C3")
 
 sceAppContentGetAddcontInfoList = idaapi.get_name_ea(
     idaapi.BADADDR, 'sceAppContentGetAddcontInfoList')
