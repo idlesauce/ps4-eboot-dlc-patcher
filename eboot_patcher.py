@@ -30,7 +30,8 @@ class StringChooser(idaapi.Choose):
         idaapi.Choose.__init__(self, title, [["String", 50], [
                                "Length", 10]], width=60, height=20)
         self.items = items
-        self.selection = items[self.deflt]
+        self.selection = None
+        self.selectedIndex = None
 
     def OnGetSize(self):
         return len(self.items)
@@ -39,12 +40,9 @@ class StringChooser(idaapi.Choose):
         return [self.items[n][0], str(self.items[n][1])]
 
     def OnSelectLine(self, n):
+        self.selectedIndex = n
         self.selection = self.items[n]
-        print("Selected string: " + self.items[n][0])
         self.Close()
-
-    def OnSelectionChange(self, n):
-        self.selection = self.items[n]
 
 
 def get_real_address(ea):
@@ -103,7 +101,7 @@ def get_mount_handler_asm_len(dlc_list):
 def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
     dlc_list_cmp_index = find_start_index_of_4_differing_chars([s for s, _ in dlc_list])
     if dlc_list_cmp_index == -1:
-        print("Couldn't find 4 consecutive differing characters")
+        print("Couldn't find 4 consecutive differing characters, using fallback mount handler")
         return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
 
     result = b""
@@ -129,7 +127,7 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
         # i*8 to get the correct copy segment
         target_offset = ((len(dlc_list)*7 - (i+1)*7) + 2 + i*8)
         if target_offset > 255:
-            print("target_offset larger than 1 byte")
+            print("target_offset larger than 1 byte, using fallback mount handler")
             return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
         dlc_list_cmp_bytes += format_displacement(target_offset, 1)
 
@@ -166,7 +164,7 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
             # one of these mov & jmp segments is 8 bytes
             jmp_target_offset = (len(dlc_list)*8) - ((i+1)*8) - 2
             if jmp_target_offset > 255:
-                print("jmp_target_offset larger than 1 byte")
+                print("jmp_target_offset larger than 1 byte, using fallback mount handler")
                 return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
             copy_in_dlc_index_bytes += format_displacement(
                 jmp_target_offset, 1)
@@ -176,7 +174,7 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
     jmp_end_offset = len(copy_in_dlc_index_bytes) + \
         len(copy_common_bytes) + 2 - 2
     if jmp_end_offset > 255:
-        print("jmp_end_offset larger than 1 byte")
+        print("jmp_end_offset larger than 1 byte, using fallback mount handler")
         return get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, len(dlc_list))
     result += b"\xEB"
     result += format_displacement(jmp_end_offset, 1)
@@ -195,7 +193,7 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
         rip, address_containing_dlc_list, len(dlc_list))
 
     if len(result) > len(fallback):
-        print("Fallback mount handler is shorter")
+        print("Fallback mount handler is shorter, using fallback mount handler")
         return fallback
 
     print("Using short mount handler")
@@ -203,7 +201,6 @@ def get_mount_handler_asm_bytes(dlc_list, rip, address_containing_dlc_list):
 
 
 def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_list_length):
-    print("Using fallback mount handler")
     # xor rax,rax
     # mov qword ptr [rdx], rax
     # mov qword ptr [rdx+8], rax
@@ -316,11 +313,15 @@ if manually_select_strings:
     chooser = StringChooser("Choose the string to patch [1] (list handler)", [
                         (str(s), s.length, s.ea) for s in temp])
     res = chooser.Show(True)
+
+    if res == -1 and chooser.selectedIndex is not None:
+        res = chooser.selectedIndex
+
     if res == -1:
         raise Exception("No string selected")
     
     list_handler_asm_target_string = next(
-        (s for s in strings_in_code_segment if s.ea == chooser.items[res-1][2]), None)
+        (s for s in strings_in_code_segment if s.ea == chooser.items[res][2]), None)
     if list_handler_asm_target_string is None:
         raise Exception("No string selected")
 
@@ -330,11 +331,15 @@ if manually_select_strings:
     chooser = StringChooser("Choose the string to patch [2] (mount handler)", [
                         (str(s), s.length, s.ea) for s in temp])
     res = chooser.Show(True)
+
+    if res == -1 and chooser.selectedIndex is not None:
+        res = chooser.selectedIndex
+
     if res == -1:
         raise Exception("No string selected")
 
     mount_handler_asm_target_string = next(
-        (s for s in strings_in_code_segment if s.ea == chooser.items[res-1][2]), None)
+        (s for s in strings_in_code_segment if s.ea == chooser.items[res][2]), None)
     if mount_handler_asm_target_string is None:
         ida_kernwin.warning("No string selected")
         exit()
@@ -377,11 +382,15 @@ if manually_select_strings:
     chooser = StringChooser("Choose the string to patch [3] (dlc list)", [
                         (str(s), s.length, s.ea) for s in temp])
     res = chooser.Show(True)
+    
+    if res == -1 and chooser.selectedIndex is not None:
+        res = chooser.selectedIndex
+
     if res == -1:
         raise Exception("No string selected")
     
     dlc_list_target_string = next(
-        (s for s in temp if s.ea == chooser.items[res-1][2]), None)
+        (s for s in temp if s.ea == chooser.items[res][2]), None)
     if dlc_list_target_string is None:
         ida_kernwin.warning("No string selected")
         exit()
@@ -452,13 +461,13 @@ sceAppContentAddcontMount = idaapi.get_name_ea(
 
 sceAppContentAddcontMount_patches = []
 
-if len(sceAppContentAddcontMount) == 0:
-    ida_kernwin.info(
-        "No references to sceAppContentAddcontMount found, this is okay none of the dlcs contain extra data, otherwise this likely means something went wrong in the decompilation step, exiting...")
-
 for xref in idautils.XrefsTo(sceAppContentAddcontMount, 0):
     if xref.type == idaapi.fl_CF or xref.type == idaapi.fl_CN:
         sceAppContentAddcontMount_patches.append(xref)
+        
+if len(sceAppContentAddcontMount_patches) == 0:
+    ida_kernwin.info(
+        "No references to sceAppContentAddcontMount found, this is okay none of the dlcs contain extra data, otherwise this likely means something went wrong in the decompilation step")
 
 sceAppContentAddcontUnmount = idaapi.get_name_ea(
     idaapi.BADADDR, 'sceAppContentAddcontUnmount')
@@ -471,7 +480,7 @@ for xref in idautils.XrefsTo(sceAppContentAddcontUnmount, 0):
 
 
 output_file = idaapi.ask_file(
-    1, "eboot_patched.elf", "Save patched eboot (*.txt)")
+    1, "eboot_patched.elf", "Save patched eboot (*.elf)")
 
 if output_file is None:
     ida_kernwin.warning("No file selected")
@@ -521,4 +530,5 @@ with open(output_file, "r+b") as f:
             f"patching sceAppContentAddcontUnmount ida: {get_hex(patch.frm)} | real: {get_hex(get_real_address(patch.frm))}")
         f.write(b'\xb8\x00\x00\x00\x00')
 
+print("Patched file saved.")
 ida_kernwin.info("Patching complete")
