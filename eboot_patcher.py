@@ -30,7 +30,7 @@ class StringChooser(idaapi.Choose):
         idaapi.Choose.__init__(self, title, [["String", 50], [
                                "Length", 10]], width=60, height=20)
         self.items = items
-        self.selection = None
+        self.selection = items[self.deflt]
 
     def OnGetSize(self):
         return len(self.items)
@@ -43,11 +43,14 @@ class StringChooser(idaapi.Choose):
         print("Selected string: " + self.items[n][0])
         self.Close()
 
+    def OnSelectionChange(self, n):
+        self.selection = self.items[n]
+
 
 def get_real_address(ea):
     offset = ida_loader.get_fileregion_offset(ea)
     if offset == idaapi.BADADDR:
-        raise ValueError(f"No file region corresponds to address {ea:x}")
+        raise Exception(f"No file region corresponds to address {ea:x}")
     return offset
 
 
@@ -241,9 +244,10 @@ def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_l
         (rip + bytes_before_lea_call + lea_call_length)
     return bytes.fromhex(f"4831C048890248894208488D3D{format_displacement_str(lea_rip_offset,4)}488B06488B5E084831C9483907750848395F087502EB0F48FFC14883F9{format_displacement_str(dlc_list_length,1)}74374883C718EBE448C7C02F617070C7022F617070C74204302F646CC64208634889D789C831D2B90A000000F7F1043088470980C23088570A31C0C3")
 
-# if not idaapi.auto_is_ok():
-#     ida_kernwin.warning("Analysis isnt finished, please wait for it to finish before running this script")
-#     exit()
+if not idaapi.auto_is_ok():
+    ida_kernwin.info("Analysis might not be finished, make sure in the bottom left (below the python button) it says idle.")
+
+print("====================================")
 
 manually_select_strings = False
 button_pressed = idaapi.ask_buttons("Automatic", "Manual", "Cancel", idaapi.ASKBTN_CANCEL,
@@ -256,11 +260,6 @@ elif button_pressed == idaapi.ASKBTN_NO:
     idaapi.info(
         "Please select the strings that are errors/warnings or otherwise seems safe to overwrite")
     manually_select_strings = True
-
-MAX_SIZE = 1024
-
-# dlc_list = ida_kernwin.ask_text(
-#     MAX_SIZE, "", "Enter all content ids here (16 char each)")
 
 extraDataText = ""
 noExtraDataText = ""
@@ -309,21 +308,26 @@ if manually_select_strings:
     temp.sort(key=lambda s: s.length, reverse=True)
     chooser = StringChooser("Choose the string to patch [1] (list handler)", [
                         (str(s), s.length, s.ea) for s in temp])
-    chooser.Show(True)
+    res = chooser.Show(True)
+    if res == -1:
+        raise Exception("No string selected")
+    
     list_handler_asm_target_string = next(
-        (s for s in strings_in_code_segment if s.ea == chooser.selection[2]), None)
+        (s for s in strings_in_code_segment if s.ea == chooser.items[res-1][2]), None)
     if list_handler_asm_target_string is None:
-        ida_kernwin.warning("No string selected")
-        exit()
+        raise Exception("No string selected")
 
     temp = [s for s in strings_in_code_segment if s.length >=
             mount_handler_asm_len + 2 and s.ea != list_handler_asm_target_string.ea]
     temp.sort(key=lambda s: s.length, reverse=True)
     chooser = StringChooser("Choose the string to patch [2] (mount handler)", [
                         (str(s), s.length, s.ea) for s in temp])
-    chooser.Show(True)
+    res = chooser.Show(True)
+    if res == -1:
+        raise Exception("No string selected")
+
     mount_handler_asm_target_string = next(
-        (s for s in strings_in_code_segment if s.ea == chooser.selection[2]), None)
+        (s for s in strings_in_code_segment if s.ea == chooser.items[res-1][2]), None)
     if mount_handler_asm_target_string is None:
         ida_kernwin.warning("No string selected")
         exit()
@@ -362,13 +366,17 @@ if manually_select_strings:
     temp.sort(key=lambda s: s.length, reverse=True)
     chooser = StringChooser("Choose the string to patch [3] (dlc list)", [
                         (str(s), s.length, s.ea) for s in temp])
-    chooser.Show(True)
+    res = chooser.Show(True)
+    if res == -1:
+        raise Exception("No string selected")
+    
     dlc_list_target_string = next(
-        (s for s in temp if s.ea == chooser.selection[2]), None)
+        (s for s in temp if s.ea == chooser.items[res-1][2]), None)
     if dlc_list_target_string is None:
         ida_kernwin.warning("No string selected")
         exit()
 else:
+    dlc_list_target_string = None
     dlc_list_candidates_list = [s for s in all_strings if "%s" in str(
         s) or "%d" in str(s) or "deprecated" in str(s)]
     dlc_list_candidates_list.sort(key=lambda s: s.length, reverse=True)
@@ -424,13 +432,17 @@ for xref in idautils.XrefsTo(sceAppContentGetAddcontInfoList, 0):
 
 if len(sceAppContentGetAddcontInfoList_patches) == 0:
     ida_kernwin.warning(
-        "No references to sceAppContentGetAddcontInfoList found, this likely means something went wrong in the decompilation step, exiting...")
+        "No references to sceAppContentGetAddcontInfoList found, this likely means something went wrong in the decompilation step or the game is unsupported by this script, exiting...")
     exit()
 
 sceAppContentAddcontMount = idaapi.get_name_ea(
     idaapi.BADADDR, 'sceAppContentAddcontMount')
 
 sceAppContentAddcontMount_patches = []
+
+if len(sceAppContentAddcontMount) == 0:
+    ida_kernwin.info(
+        "No references to sceAppContentAddcontMount found, this is okay if the dlc doesnt contain extra data, otherwise this likely means something went wrong in the decompilation step, exiting...")
 
 for xref in idautils.XrefsTo(sceAppContentAddcontMount, 0):
     if xref.type == idaapi.fl_CF or xref.type == idaapi.fl_CN:
