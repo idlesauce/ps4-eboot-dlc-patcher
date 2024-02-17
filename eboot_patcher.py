@@ -206,13 +206,13 @@ def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_l
     # mov qword ptr [rdx+8], rax
     # lea rdi, [rip+0x60]
     # mov rax, qword ptr [rsi]
-    # mov rbx, qword ptr [rsi+8]
+    # mov r8, qword ptr [rsi+8]
     # xor rcx, rcx
 
     # loop:
     # cmp qword ptr [rdi], rax
     # jne loop_next
-    # cmp qword ptr [rdi+8], rbx
+    # cmp qword ptr [rdi+8], r8
     # jne loop_next
     # jmp match_found
 
@@ -246,7 +246,7 @@ def get_fallback_mount_handler_asm_bytes(rip, address_containing_dlc_list, dlc_l
     bytes_before_lea_call = 10
     lea_rip_offset = address_containing_dlc_list - \
         (rip + bytes_before_lea_call + lea_call_length)
-    return bytes.fromhex(f"4831C048890248894208488D3D{format_displacement_str(lea_rip_offset,4)}488B06488B5E084831C9483907750848395F087502EB0F48FFC14883F9{format_displacement_str(dlc_list_length,1)}74374883C711EBE448C7C02F617070C7022F617070C74204302F646CC64208634889D789C831D2B90A000000F7F1043088470980C23088570A31C0C3")
+    return bytes.fromhex(f"4831C048890248894208488D3D{format_displacement_str(lea_rip_offset,4)}488B064C8B46084831C948390775084C3947087502EB0F48FFC14883F9{format_displacement_str(dlc_list_length,1)}74344883C711EBE448C7C02F617070C7022F617070C74204302F646CC642086389C831D2B90A000000F7F1043088420980C23088520A31C0C3")
 
 if not idaapi.auto_is_ok():
     ida_kernwin.info("Analysis might not be finished, make sure in the bottom left (below the python button) it says idle.")
