@@ -335,6 +335,15 @@ int32_t dlcldr_sceNpEntitlementAccessGetEntitlementKey(
 	return 0;
 }
 
+int32_t dlcldr_sceAppContentGetEntitlementKey(
+	SceNpServiceLabel serviceLabel,
+	const SceNpUnifiedEntitlementLabel *entitlementLabel,
+	SceAppContentEntitlementKey *key)
+{
+	memset(key->data, 0, SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE);
+	return 0;
+}
+
 int32_t dlcldr_sceAppContentAddcontDelete(
 	SceNpServiceLabel serviceLabel,
 	const SceNpUnifiedEntitlementLabel *entitlementLabel)
@@ -357,10 +366,10 @@ int32_t dlcldr_sceAppContentAddcontMount(
 			// mountPoint->data[11] = '\0';										   // Null-terminate the string
 			char new_mount_point[SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE];
 			// memset(&new_mount_point, 0, SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE);
-			
+
 			if (i < 10)
 			{
-				// to avoid changing the naming convention 
+				// to avoid changing the naming convention
 				snprintf(new_mount_point, SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE, "/app0/dlc%02d", i);
 			}
 			else
@@ -369,7 +378,6 @@ int32_t dlcldr_sceAppContentAddcontMount(
 			}
 
 			strncpy(mountPoint->data, new_mount_point, SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE);
-
 
 			// char log_buf[250];
 			// snprintf(log_buf, 250, "Mount success for %s (path: %s)\n", entitlementLabel->data, mountPoint->data);

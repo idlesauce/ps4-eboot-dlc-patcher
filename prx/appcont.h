@@ -217,6 +217,13 @@ typedef struct SceNpEntitlementAccessEntitlementKey
 	char data[SCE_NP_ENTITLEMENT_ACCESS_ENTITLEMENT_KEY_SIZE];
 } SceNpEntitlementAccessEntitlementKey;
 
+#define SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE (16)
+
+typedef struct SceAppContentEntitlementKey
+{
+	char data[SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE];
+} SceAppContentEntitlementKey;
+
 #if !defined(SCE_OK)
 #define SCE_OK 0
 #endif /* !defined(SCE_OK) */
@@ -237,9 +244,9 @@ void ptrToHexStr(void *ptr, char *str);
 int32_t sceAppContentInitialize(
 	SceAppContentInitParam *initParam,
 	SceAppContentBootParam *bootParam);
-int32_t dlcldr_sceAppContentAppParamGetInt(
-	SceAppContentAppParamId paramId,
-	int32_t *value);
+// int32_t dlcldr_sceAppContentAppParamGetInt(
+// 	SceAppContentAppParamId paramId,
+// 	int32_t *value);
 // int sceAppContentAppParamGetInt();
 // int32_t sceAppContentGetAddcontInfoList(
 // 	SceNpServiceLabel serviceLabel,
@@ -259,7 +266,11 @@ int32_t dlcldr_sceAppContentAppParamGetInt(
 // 	SceAppContentMountPoint *mountPoint);
 // int32_t sceAppContentAddcontUnmount(
 // 	const SceAppContentMountPoint *mountPoint);
-// int32_t sceAppContentGetEntitlementKey();
+
+// int32_t sceAppContentGetEntitlementKey(
+// 	SceNpServiceLabel serviceLabel,
+// 	const SceNpUnifiedEntitlementLabel *entitlementLabel,
+// 	SceAppContentEntitlementKey *key);
 
 // int32_t sceAppContentGetPftFlag(
 // 	SceAppContentPftFlag *pftFlag
