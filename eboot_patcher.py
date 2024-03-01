@@ -318,13 +318,12 @@ sceSysmoduleLoadModule = idaapi.get_name_ea(
 
 refs = sorted(list(idautils.CodeRefsTo(sceSysmoduleLoadModule, 0)))
 
-sceSysmoduleLoadModule_call_to_overwrite = None
+# some games call sceSysmoduleLoadModule multiple times for libSceAppContent (cusa05332)
+sceSysmoduleLoadModule_patches = []
+
 found = False
 
 for ref in refs:
-    if found:
-        break
-
     prev_head = idc.prev_head(ref)
     count = 0
 
@@ -334,15 +333,23 @@ for ref in refs:
             value = idc.get_operand_value(prev_head, 1)
             # 0xB4 is libSceAppContent
             if value == 0xB4:
+                # if t_sceSysmoduleLoadModule_patches already has a reference to this address, skip it
+                # sometimes the next call to sceSysmoduleLoadModule is within 10 instructions
+                # so it would recognize the others parameter
+                if prev_head in [x[1] for x in sceSysmoduleLoadModule_patches]:
+                    # print(
+                    #     f"Skipping reference to sceSysmoduleLoadModule for libSceAppContent at {get_hex(ref)}")
+                    break
+
                 print(
-                    f"sceSysmoduleLoadModule for libSceAppContent at {get_hex(ref)}")
-                sceSysmoduleLoadModule_call_to_overwrite = ref
-                found = True
-            break
+                    f"sceSysmoduleLoadModule for libSceAppContent at {get_hex(ref)} | mov edi addr: {get_hex(prev_head)}")
+                
+                sceSysmoduleLoadModule_patches.append([ref,prev_head])
+                
         prev_head = idc.prev_head(prev_head)
         count += 1
 
-if sceSysmoduleLoadModule_call_to_overwrite is None:
+if len(sceSysmoduleLoadModule_patches) == 0:
     raise Exception("sceSysmoduleLoadModule for libSceAppContent not found")
 
 
@@ -671,10 +678,13 @@ with open(patched_elf_output_path, "r+b") as f:
     f.seek(t_realaddr)
     f.write(prx_loader_with_path_and_terminator_bytes)
 
-    f.seek(get_real_address(sceSysmoduleLoadModule_call_to_overwrite))
-    f.write(b"\xE8")
-    f.write(format_displacement(
-        t_realaddr - get_real_address(sceSysmoduleLoadModule_call_to_overwrite) - 5, 4))
+    for patch in sceSysmoduleLoadModule_patches:
+        f.seek(get_real_address(patch[0]))
+        f.write(b"\xE8")
+        f.write(format_displacement(
+            t_realaddr - get_real_address(patch[0]) - 5, 4))
+        print(
+            f"Patched call to sceSysmoduleLoadModule ida: {get_hex(patch[0])} | real: {get_hex(get_real_address(patch[0]))}")
 
     for patch in sceAppContentInitialize_patches:
         f.seek(get_real_address(patch.frm))
