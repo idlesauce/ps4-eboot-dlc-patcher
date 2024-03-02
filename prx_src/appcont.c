@@ -89,27 +89,6 @@ int32_t _init()
 	}
 
 	// append_to_log("sceAppContentInitialize call success\n");
-
-	// int32_t getint_test_value = 0;
-
-	// int32_t getint_test = dlcldr_sceAppContentAppParamGetInt(SCE_APP_CONTENT_APPPARAM_ID_USER_DEFINED_PARAM_4, &getint_test_value);
-
-	// if (getint_test < 0)
-	// {
-	// 	append_to_log("dlcldr_sceAppContentAppParamGetInt call failed. res: ");
-	// 	char res_str[10];
-	// 	intToStr(getint_test, res_str);
-	// 	append_to_log(res_str);
-	// 	append_to_log("\n");
-	// 	return -1;
-	// }
-
-	// append_to_log("dlcldr_sceAppContentAppParamGetInt call success (value: ");
-	// char getint_test_value_str[10];
-	// intToStr(getint_test_value, getint_test_value_str);
-	// append_to_log(getint_test_value_str);
-	// append_to_log(")\n");
-
 	return 0;
 }
 
@@ -187,7 +166,6 @@ int append_to_log(const char *str)
 
 	if (fd <= 0)
 	{
-		printf("Cannot open file \n");
 		return -1;
 	}
 
@@ -360,13 +338,13 @@ int32_t dlcldr_sceAppContentAddcontMount(
 	{
 		if (strcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel.data) == 0)
 		{
-			// #error "TODO: implement proper folder names in mount"
-			// strncpy(mountPoint->data, "/app0/dlc0", sizeof(mountPoint->data) - 1); // Copy string into mountPoint->data
-			// mountPoint->data[10] = 0x30 + i;									   // Modify character
-			// mountPoint->data[11] = '\0';										   // Null-terminate the string
+			if (addcontInfo[i].status != SCE_APP_CONTENT_ADDCONT_DOWNLOAD_STATUS_INSTALLED)
+			{
+				return SCE_APP_CONTENT_ERROR_NOT_MOUNTED;
+			}
+			
 			char new_mount_point[SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE];
-			// memset(&new_mount_point, 0, SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE);
-
+			
 			if (i < 10)
 			{
 				// to avoid changing the naming convention
@@ -386,7 +364,7 @@ int32_t dlcldr_sceAppContentAddcontMount(
 		}
 	}
 
-	return 0;
+	return SCE_APP_CONTENT_ERROR_DRM_NO_ENTITLEMENT;
 }
 
 int32_t dlcldr_sceAppContentAddcontUnmount(
