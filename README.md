@@ -7,7 +7,7 @@ Patches `sceAppContentGetAddcontInfoList`, `sceAppContentAddcontMount` and `sceA
 
 This is a quick and dirty script and its also not the best way to achieve this, since it needs strings (of a certains minimum length) that are not important, which means its possible some games wont work with this. If i have time i might update this with a better method.
 
-- Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10
+- Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10 (dont copy in the python folder)
 - Useful for extracting and repacking pkgs: 
   - https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file
   - https://www.psxhax.com/threads/ps4-patch-builder-for-building-modded-update-pkgs-by-modded-warfare.7112/
@@ -22,7 +22,7 @@ This is a quick and dirty script and its also not the best way to achieve this, 
 1. Go to File->Script file... and select the python script from this repo.
 1. Follow the instructions, if you see `Patching complete` you're good.
 1. Extract all files from the update pkg.
-1. Replace the eboot.bin from the extracted update pkg's Image0 folder with our patched one (rename to eboot.bin)
+1. Replace the eboot.bin from the extracted update pkg's Image0 folder with our patched one (rename to eboot.bin), and place `dlcldr.prx` next to it.
 1. During the patching process you were asked to input a list of content ids. For each of the content ids you entered in the box for `DLCs with extra data`, you'll need to create a new folder in Image0 named `dlcXX` where XX is the index from 0, in the same order you entered in the textbox. In this new folder youll need to copy the contents of the Image0 folder of the respective extracted dlc. See below for example:
     ```
     GEDLC00000000001 -> dlc00/
