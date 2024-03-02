@@ -1076,8 +1076,20 @@ def main():
             f.write(format_displacement(4 if dlc[1] else 0, 4))
 
 
-    print("Patched file saved.")
-    ida_kernwin.info("Patching complete")
+    finish_text = "Patching complete."
+    
+    dlcs_with_extra_data_list = [dlc[0] for dlc in dlc_list if dlc[1]]
+    if len(dlcs_with_extra_data_list) > 0:
+        finish_text += "\nCreate folders and copy contents for dlcs with extra data in the order you entered the content ids. eg:\n"
+        for i in range(len(dlc_list)):
+            if i > 2:
+                finish_text += f"... ({len(dlc_list) - i} more)"
+                break
+            finish_text += f"{dlc_list[i][0]}/Image0/* -> cusaXXXX-patch/Image0/dlc0{i}/\n"
+    else:
+        finish_text += "\nNo extra data dlcs used, no need to create folders."
+    print(finish_text)
+    ida_kernwin.info(finish_text)
 
 
 if __name__ == "__main__":
