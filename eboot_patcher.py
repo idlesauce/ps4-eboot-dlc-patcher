@@ -185,8 +185,10 @@ class SegmentInfo:
         self.start_of_next = start_of_next
         self.segment_start = segment_start
 
-
 print("===============================")
+
+if not idaapi.auto_is_ok():
+    ida_kernwin.info("Analysis might not be finished, make sure in the bottom left (below the python button) it says idle.")
 
 function_symbols = [
     # "sceAppContentInitialize", # this is handled explicitly
