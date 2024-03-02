@@ -3,9 +3,23 @@
 ## This project is very much in an experimental stage. Dont expect it to be reliable.
 
 
-Patches `sceAppContentGetAddcontInfoList`, `sceAppContentAddcontMount` and `sceAppContentAddcontUnmount` calls in the eboot to load dlcs from the same pkg. This is made for ps4 fpkgs, running on ps5, where dlc fpkgs dont work, although i guess it might also be useful for games where the main game is unlocked with dlcs so it can all be in one pkg (like some telltale games).
+Patches the eboot to load a custom .prx  containing the dlc content ids, and all functions from `libSceAppContent`,
+emulating some of the functions from it:
+```
+sceAppContentGetAddcontInfoList
+sceAppContentGetAddcontInfo
+sceAppContentGetEntitlementKey
+sceAppContentAddcontDelete
+sceAppContentAddcontMount
+sceAppContentAddcontUnmount
+sceAppContentGetPftFlag
+```
+The other functions are "proxied" to the real `libSceAppContent` library.
+Some of the newer cross-gen games use the `libSceNpEntitlementAccess` library, this is currently not emulated, however i plan at least partially support it.
 
-This is a quick and dirty script and its also not the best way to achieve this, since it needs strings (of a certains minimum length) that are not important, which means its possible some games wont work with this. If i have time i might update this with a better method.
+This is made for ps4 fpkgs, running on ps5, where dlc fpkgs dont work, although i guess it might also be useful for games where the main game is unlocked with dlcs so it can all be in one pkg (like some telltale games).
+
+
 
 - Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10 (dont copy in the python folder)
 - Useful for extracting and repacking pkgs: 
