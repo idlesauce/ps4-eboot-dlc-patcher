@@ -1,4 +1,5 @@
 import binascii
+import shutil
 import ida_loader
 import ida_kernwin
 import idaapi
@@ -993,10 +994,7 @@ def main():
     if patched_prx_output_path is None:
         raise Exception("No output file selected")
 
-
-    with open(input_file, "rb") as f:
-        with open(patched_elf_output_path, "wb") as g:
-            g.write(f.read())
+    shutil.copy(input_file, patched_elf_output_path)
 
     with open(patched_elf_output_path, "r+b") as f:
         for patch in patches:
