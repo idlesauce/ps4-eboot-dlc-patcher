@@ -185,898 +185,903 @@ class SegmentInfo:
         self.start_of_next = start_of_next
         self.segment_start = segment_start
 
-print("===============================")
+def main():    
+    print("===============================")
 
-if not idaapi.auto_is_ok():
-    ida_kernwin.info("Analysis might not be finished, make sure in the bottom left (below the python button) it says idle.")
+    if not idaapi.auto_is_ok():
+        ida_kernwin.info("Analysis might not be finished, make sure in the bottom left (below the python button) it says idle.")
 
-function_symbols = [
-    # "sceAppContentInitialize", # this is handled explicitly
-    "sceAppContentGetAddcontInfo",
-    "sceAppContentGetAddcontInfoList",
-    "sceAppContentGetEntitlementKey",
-    "sceAppContentAddcontMount",
-    "sceAppContentAddcontUnmount",
-    "sceAppContentAddcontDelete",
-    "sceAppContentAppParamGetInt",
-    "sceAppContentAddcontEnqueueDownload",
-    "sceAppContentTemporaryDataMount2",
-    "sceAppContentTemporaryDataUnmount",
-    "sceAppContentTemporaryDataFormat",
-    "sceAppContentTemporaryDataGetAvailableSpaceKb",
-    "sceAppContentDownloadDataFormat",
-    "sceAppContentDownloadDataGetAvailableSpaceKb",
-    "sceAppContentGetAddcontDownloadProgress",
-    "sceAppContentAddcontEnqueueDownloadByEntitlemetId",
-    "sceAppContentAddcontEnqueueDownloadSp",
-    "sceAppContentAddcontMountByEntitlemetId",
-    "sceAppContentAddcontShrink",
-    "sceAppContentAppParamGetString",
-    "sceAppContentDownload0Expand",
-    "sceAppContentDownload0Shrink",
-    "sceAppContentDownload1Expand",
-    "sceAppContentDownload1Shrink",
-    "sceAppContentGetAddcontInfoByEntitlementId",
-    "sceAppContentGetAddcontInfoListByIroTag",
-    "sceAppContentGetDownloadedStoreCountry",
-    "sceAppContentGetPftFlag",
-    "sceAppContentGetRegion",
-    "sceAppContentRequestPatchInstall",
-    "sceAppContentSmallSharedDataFormat",
-    "sceAppContentSmallSharedDataGetAvailableSpaceKb",
-    "sceAppContentSmallSharedDataMount",
-    "sceAppContentSmallSharedDataUnmount",
-]
+    function_symbols = [
+        # "sceAppContentInitialize", # this is handled explicitly
+        "sceAppContentGetAddcontInfo",
+        "sceAppContentGetAddcontInfoList",
+        "sceAppContentGetEntitlementKey",
+        "sceAppContentAddcontMount",
+        "sceAppContentAddcontUnmount",
+        "sceAppContentAddcontDelete",
+        "sceAppContentAppParamGetInt",
+        "sceAppContentAddcontEnqueueDownload",
+        "sceAppContentTemporaryDataMount2",
+        "sceAppContentTemporaryDataUnmount",
+        "sceAppContentTemporaryDataFormat",
+        "sceAppContentTemporaryDataGetAvailableSpaceKb",
+        "sceAppContentDownloadDataFormat",
+        "sceAppContentDownloadDataGetAvailableSpaceKb",
+        "sceAppContentGetAddcontDownloadProgress",
+        "sceAppContentAddcontEnqueueDownloadByEntitlemetId",
+        "sceAppContentAddcontEnqueueDownloadSp",
+        "sceAppContentAddcontMountByEntitlemetId",
+        "sceAppContentAddcontShrink",
+        "sceAppContentAppParamGetString",
+        "sceAppContentDownload0Expand",
+        "sceAppContentDownload0Shrink",
+        "sceAppContentDownload1Expand",
+        "sceAppContentDownload1Shrink",
+        "sceAppContentGetAddcontInfoByEntitlementId",
+        "sceAppContentGetAddcontInfoListByIroTag",
+        "sceAppContentGetDownloadedStoreCountry",
+        "sceAppContentGetPftFlag",
+        "sceAppContentGetRegion",
+        "sceAppContentRequestPatchInstall",
+        "sceAppContentSmallSharedDataFormat",
+        "sceAppContentSmallSharedDataGetAvailableSpaceKb",
+        "sceAppContentSmallSharedDataMount",
+        "sceAppContentSmallSharedDataUnmount",
+    ]
 
-fake_symbol_prefix = "dlcldr_"
+    fake_symbol_prefix = "dlcldr_"
 
-function_symbols_with_real_and_fake_nids = []
-for symbol in function_symbols:
-    real_nid = calculateNID(symbol)
-    fake_nid = calculateNID(fake_symbol_prefix + symbol)
-    function_symbols_with_real_and_fake_nids.append(
-        (symbol, real_nid, fake_nid, False))
+    function_symbols_with_real_and_fake_nids = []
+    for symbol in function_symbols:
+        real_nid = calculateNID(symbol)
+        fake_nid = calculateNID(fake_symbol_prefix + symbol)
+        function_symbols_with_real_and_fake_nids.append(
+            (symbol, real_nid, fake_nid, False))
 
-prx_path = "/app0/dlcldr.prx"
-prx_loader_code_length = get_prx_loader_asm_bytes_length()
-no_of_bytes_required_for_patches_in_eboot = 1 + \
-    prx_loader_code_length + 1 + len(prx_path) + 1
-unused_space_at_end_of_code_segment_bounds = None
-
-segments = idautils.Segments()
-t_code_segment = idaapi.get_segm_by_name("CODE")
-if t_code_segment is None:
-    raise Exception("No code segment found")
-
-t_next_segment = idaapi.get_next_seg(t_code_segment.start_ea)
-if t_next_segment is None:
-    raise Exception("No next segment found")
-
-# the chance that the align at the end of code has enough space for the prx loader is basically 100%
-# we just need 50 bytes (i looked at about 20 games and the smallest ive seen is 800 bytes)
-
-# sometimes the align between the code segment isnt part of the segment
-# we can patch this to be able to use that space for new code
-# otherwise page fault if that space is used
-if t_code_segment.end_ea != t_next_segment.start_ea:
-    unused_space_at_end_of_code_segment_bounds = SegmentInfo(
-        t_code_segment.end_ea, t_next_segment.start_ea, t_next_segment.start_ea, t_code_segment.start_ea)
-    print(
-        f"Unused space between code segment and next segment: {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_start)} - {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_end)}")
-
-# if this is true then the align is already part of the code segment (ida interprets it as part of the code segment if the align field in the pht is set to 4k?)
-# find the offset where the zeroes begin
-if unused_space_at_end_of_code_segment_bounds is None or unused_space_at_end_of_code_segment_bounds.unused_space_end - unused_space_at_end_of_code_segment_bounds.unused_space_start < no_of_bytes_required_for_patches_in_eboot:
-    code_segment = idaapi.get_segm_by_name("CODE")
-    # we already know the start of the next is the same
-    code_segment_end = code_segment.end_ea - 1
-    zeroes_count = 0
-    last_byte = 0
-    while last_byte == 0:
-        if not idc.is_loaded(code_segment_end - zeroes_count):
-            last_byte = 0
-        else:
-            last_byte = idc.get_wide_byte(code_segment_end - zeroes_count)
-
-        if last_byte == 0:
-            zeroes_count += 1
-
-    unused_space_at_end_of_code_segment_bounds = SegmentInfo(
-        code_segment_end - zeroes_count + 1, code_segment_end, code_segment_end, code_segment.start_ea)
-    print(
-        f"Unused space at end of code segment: {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_start)} - {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_end)}")
-
-if unused_space_at_end_of_code_segment_bounds is None or unused_space_at_end_of_code_segment_bounds.unused_space_end - unused_space_at_end_of_code_segment_bounds.unused_space_start < no_of_bytes_required_for_patches_in_eboot:
-    # set to None so i can easily check if we need to fall back to string patching
-    # if there isnt enough space in the align
+    prx_path = "/app0/dlcldr.prx"
+    prx_loader_code_length = get_prx_loader_asm_bytes_length()
+    no_of_bytes_required_for_patches_in_eboot = 1 + \
+        prx_loader_code_length + 1 + len(prx_path) + 1
     unused_space_at_end_of_code_segment_bounds = None
-    print("Using string as space for patches because not enough free space at end of code segment")
-    raise Exception("String fallback not implemented")
 
+    segments = idautils.Segments()
+    t_code_segment = idaapi.get_segm_by_name("CODE")
+    if t_code_segment is None:
+        raise Exception("No code segment found")
 
-use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch = False
-sceKernelLoadStartModule_address = idaapi.get_name_ea(
-    idaapi.BADADDR, "sceKernelLoadStartModule")
-if sceKernelLoadStartModule_address == idaapi.BADADDR:
-    print("sceKernelLoadStartModule not found, using sceAppContentInitialize to sceKernelLoadStartModule patch")
-    use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch = True
-    sceKernelLoadStartModule_address = idaapi.get_name_ea(
-        idaapi.BADADDR, "sceAppContentInitialize")
-    if sceKernelLoadStartModule_address == idaapi.BADADDR:
-        raise Exception("sceAppContentInitialize function not found")
-    sceKernelLoadStartModule_address = idaapi.get_func(
-        sceKernelLoadStartModule_address).start_ea
-else:
-    print("sceKernelLoadStartModule found")
-    sceKernelLoadStartModule_address = idaapi.get_func(
-        sceKernelLoadStartModule_address).start_ea
+    t_next_segment = idaapi.get_next_seg(t_code_segment.start_ea)
+    if t_next_segment is None:
+        raise Exception("No next segment found")
 
-prx_loader_bytes_start = unused_space_at_end_of_code_segment_bounds.unused_space_start
-prx_loader_bytes = get_prx_loader_asm_bytes(
-    prx_loader_bytes_start, sceKernelLoadStartModule_address, prx_loader_bytes_start + prx_loader_code_length)
+    # the chance that the align at the end of code has enough space for the prx loader is basically 100%
+    # we just need 50 bytes (i looked at about 20 games and the smallest ive seen is 800 bytes)
 
-
-# find where sceSysmoduleLoadModule with 0xb4 (libSceAppContent) is called
-sceSysmoduleLoadModule = idaapi.get_name_ea(
-    idaapi.BADADDR, 'sceSysmoduleLoadModule')
-
-refs = sorted(list(idautils.CodeRefsTo(sceSysmoduleLoadModule, 0)))
-
-# some games call sceSysmoduleLoadModule multiple times for libSceAppContent (cusa05332)
-sceSysmoduleLoadModule_patches = []
-
-found = False
-
-for ref in refs:
-    prev_head = idc.prev_head(ref)
-    count = 0
-
-    while prev_head != idaapi.BADADDR and count < 10:
-        mnem = idc.print_insn_mnem(prev_head)
-        if mnem == 'mov' and idc.print_operand(prev_head, 0) == 'edi':
-            value = idc.get_operand_value(prev_head, 1)
-            # 0xB4 is libSceAppContent
-            if value == 0xB4:
-                # if t_sceSysmoduleLoadModule_patches already has a reference to this address, skip it
-                # sometimes the next call to sceSysmoduleLoadModule is within 10 instructions
-                # so it would recognize the others parameter
-                if prev_head in [x[1] for x in sceSysmoduleLoadModule_patches]:
-                    # print(
-                    #     f"Skipping reference to sceSysmoduleLoadModule for libSceAppContent at {get_hex(ref)}")
-                    break
-
-                print(
-                    f"sceSysmoduleLoadModule for libSceAppContent at {get_hex(ref)} | mov edi addr: {get_hex(prev_head)}")
-
-                sceSysmoduleLoadModule_patches.append([ref, prev_head])
-
-        prev_head = idc.prev_head(prev_head)
-        count += 1
-
-if len(sceSysmoduleLoadModule_patches) == 0:
-    raise Exception("sceSysmoduleLoadModule for libSceAppContent not found")
-
-
-# patch out sceAppContentInitialize calls, as they arent used, and might be replaced with sceKernelLoadStartModule
-sceAppContentInitialize = idaapi.get_name_ea(
-    idaapi.BADADDR, 'sceAppContentInitialize')
-
-sceAppContentInitialize_patches = []
-
-for xref in idautils.XrefsTo(sceAppContentInitialize, 0):
-    if xref.type == idaapi.fl_CN or xref.type == idaapi.fl_JN:
-        # if xref is the function definition, skip it
-        if xref.frm == idaapi.get_func(sceAppContentInitialize).start_ea:
-            continue
-
+    # sometimes the align between the code segment isnt part of the segment
+    # we can patch this to be able to use that space for new code
+    # otherwise page fault if that space is used
+    if t_code_segment.end_ea != t_next_segment.start_ea:
+        unused_space_at_end_of_code_segment_bounds = SegmentInfo(
+            t_code_segment.end_ea, t_next_segment.start_ea, t_next_segment.start_ea, t_code_segment.start_ea)
         print(
-            f"Found reference to sceAppContentInitialize at {get_hex(xref.frm)} | type: {xref.type}")
-        sceAppContentInitialize_patches.append(xref)
+            f"Unused space between code segment and next segment: {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_start)} - {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_end)}")
 
-if len(sceAppContentInitialize_patches) == 0:
-    raise Exception("No references to sceAppContentInitialize found")
-
-input_file = idaapi.get_input_file_path()
-
-replacements = [
-    ("libSceAppContentUtil\0".encode("ascii"),
-        "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
-    ("libSceAppContent\0".encode("ascii"),
-        "dlcldr\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
-    ("libSceAppContentBundle\0".encode("ascii"),
-        "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
-    ("libSceAppContentIro\0".encode("ascii"),
-        "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
-    ("libSceAppContentPft\0".encode("ascii"),
-        "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
-    ("libSceAppContentSc\0".encode("ascii"),
-        "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
-]
-
-patches = []
-
-# add prx loader bytes & prx path to patches
-prx_loader_with_path_and_terminator_bytes = prx_loader_bytes + \
-    prx_path.encode("ascii") + b"\x00"
-
-
-libkernel_nid_suffix = None
-
-libkernel_symbols = [
-    "sceKernelAddCpumodeEvent",
-    "sceKernelAddFileEvent",
-    "sceKernelAddGpuExceptionEvent",
-    "sceKernelAddHRTimerEvent",
-    "sceKernelAddReadEvent",
-    "sceKernelAddTimerEvent",
-    "sceKernelAddUserEvent",
-    "sceKernelAddUserEventEdge",
-    "sceKernelAddWriteEvent",
-    "sceKernelAioCancelRequest",
-    "sceKernelAioCancelRequests",
-    "sceKernelAioDeleteRequest",
-    "sceKernelAioDeleteRequests",
-    "sceKernelAioInitializeImpl",
-    "sceKernelAioInitializeParam",
-    "sceKernelAioPollRequest",
-    "sceKernelAioPollRequests",
-    "sceKernelAioSetParam",
-    "sceKernelAioSubmitReadCommands",
-    "sceKernelAioSubmitReadCommandsMultiple",
-    "sceKernelAioSubmitWriteCommands",
-    "sceKernelAioSubmitWriteCommandsMultiple",
-    "sceKernelAioWaitRequest",
-    "sceKernelAioWaitRequests",
-    "sceKernelAllocateDirectMemory",
-    "sceKernelAllocateDirectMemoryForMiniApp",
-    "sceKernelAllocateMainDirectMemory",
-    "sceKernelAllocateTraceDirectMemory",
-    "sceKernelAvailableDirectMemorySize",
-    "sceKernelAvailableFlexibleMemorySize",
-    "sceKernelBacktraceSelf",
-    "sceKernelBatchMap",
-    "sceKernelBatchMap2",
-    "sceKernelCancelEventFlag",
-    "sceKernelCancelSema",
-    "sceKernelCheckedReleaseDirectMemory",
-    "sceKernelCheckReachability",
-    "sceKernelChmod",
-    "sceKernelClearBootReqNotifyCount",
-    "sceKernelClearEventFlag",
-    "sceKernelClearGameDirectMemory",
-    "sceKernelClockGetres",
-    "sceKernelClockGettime",
-    "sceKernelClose",
-    "sceKernelCloseEport",
-    "sceKernelCloseEventFlag",
-    "sceKernelCloseSema",
-    "sceKernelConfiguredFlexibleMemorySize",
-    "sceKernelConvertLocaltimeToUtc",
-    "sceKernelConvertUtcToLocaltime",
-    "sceKernelCreateEport",
-    "sceKernelCreateEqueue",
-    "sceKernelCreateEventFlag",
-    "sceKernelCreateSema",
-    "sceKernelDebugAcquireAndUpdateDebugRegister",
-    "sceKernelDebugGetAppStatus",
-    "sceKernelDebugGetPauseCount",
-    "sceKernelDebugGpuPaDebugIsInProgress",
-    "sceKernelDebugOutText",
-    "sceKernelDebugRaiseException",
-    "sceKernelDebugRaiseExceptionOnReleaseMode",
-    "sceKernelDebugRaiseExceptionWithContext",
-    "sceKernelDebugRaiseExceptionWithInfo",
-    "sceKernelDebugReleaseDebugContext",
-    "sceKernelDeleteCpumodeEvent",
-    "sceKernelDeleteEport",
-    "sceKernelDeleteEqueue",
-    "sceKernelDeleteEventFlag",
-    "sceKernelDeleteFileEvent",
-    "sceKernelDeleteGpuExceptionEvent",
-    "sceKernelDeleteHRTimerEvent",
-    "sceKernelDeleteReadEvent",
-    "sceKernelDeleteSema",
-    "sceKernelDeleteTimerEvent",
-    "sceKernelDeleteUserEvent",
-    "sceKernelDeleteWriteEvent",
-    "sceKernelDirectMemoryQuery",
-    "sceKernelDirectMemoryQueryForId",
-    "sceKernelDlsym",
-    "sceKernelEnableDmemAliasing",
-    "sceKernelEnableDmemAliasing2",
-    "sceKernelEnablePthreadObjectCheck",
-    "sceKernelError",
-    "sceKernelEventLogInit",
-    "sceKernelEventLogPread",
-    "sceKernelEventLogRead",
-    "sceKernelEventLogWrite",
-    "sceKernelFchmod",
-    "sceKernelFcntl",
-    "sceKernelFdatasync",
-    "sceKernelFlock",
-    "sceKernelFstat",
-    "sceKernelFsync",
-    "sceKernelFtruncate",
-    "sceKernelFutimes",
-    "sceKernelGetAllowedSdkVersionOnSystem",
-    "sceKernelGetAppInfo",
-    "sceKernelGetAslrStatus",
-    "sceKernelGetBackupRestoreMode",
-    "sceKernelGetBackupRestoreModeOfNextBoot",
-    "sceKernelGetBasicProductShape",
-    "sceKernelGetBetaUpdateTestForRcmgr",
-    "sceKernelGetBioUsageAll",
-    "sceKernelGetBootReqNotifyCount",
-    "sceKernelGetCallRecord",
-    "sceKernelGetCompiledSdkVersion",
-    "sceKernelGetCompiledSdkVersionByPath",
-    "sceKernelGetCompiledSdkVersionByPid",
-    "sceKernelGetCpuFrequency",
-    "sceKernelGetCpumode",
-    "sceKernelGetCpumodeGame",
-    "sceKernelGetCpuTemperature",
-    "sceKernelGetCpuUsage",
-    "sceKernelGetCpuUsageAll",
-    "sceKernelGetCpuUsageProc",
-    "sceKernelGetCpuUsageProc2",
-    "sceKernelGetCpuUsageThread",
-    "sceKernelGetCurrentCpu",
-    "sceKernelGetDataTransferMode",
-    "sceKernelGetDebugMenuMiniModeForRcmgr",
-    "sceKernelGetDebugMenuModeForPsmForRcmgr",
-    "sceKernelGetDebugMenuModeForRcmgr",
-    "sceKernelGetdents",
-    "sceKernelGetDirectMemorySize",
-    "sceKernelGetDirectMemoryType",
-    "sceKernelGetdirentries",
-    "sceKernelGetEventData",
-    "sceKernelGetEventError",
-    "sceKernelGetEventFflags",
-    "sceKernelGetEventFilter",
-    "sceKernelGetEventId",
-    "sceKernelGetEventUserData",
-    "sceKernelGetExecutableModuleHandle",
-    "sceKernelGetExtLibcHandle",
-    "sceKernelGetFakeFinalizeMenuForRcmgr",
-    "sceKernelGetFlagedUpdaterForRcmgr",
-    "sceKernelGetForceUpdateModeForRcmgr",
-    "sceKernelGetFsSandboxRandomWord",
-    "sceKernelGetGPI",
-    "sceKernelGetGPO",
-    "sceKernelGetHwFeatureInfoForDecid",
-    "sceKernelGetIdPs",
-    "sceKernelGetIdTableCurrentCount",
-    "sceKernelGetIpcPath",
-    "sceKernelGetLibkernelTextLocation",
-    "sceKernelGetMainSocId",
-    "sceKernelGetModuleInfo",
-    "sceKernelGetModuleInfoForUnwind",
-    "sceKernelGetModuleInfoFromAddr",
-    "sceKernelGetModuleInfoInternal",
-    "sceKernelGetModuleList",
-    "sceKernelGetModuleListInternal",
-    "sceKernelGetOpenPsIdForSystem",
-    "sceKernelGetPageTableStats",
-    "sceKernelGetPagingStatsOfAllObjects",
-    "sceKernelGetPagingStatsOfAllThreads",
-    "sceKernelGetPhysPageSize",
-    "sceKernelGetProcessName",
-    "sceKernelGetProcessTime",
-    "sceKernelGetProcessTimeCounter",
-    "sceKernelGetProcessTimeCounterFrequency",
-    "sceKernelGetProcessType",
-    "sceKernelGetProcParam",
-    "sceKernelGetProductCode",
-    "sceKernelGetProductStr",
-    "sceKernelGetPrtAperture",
-    "sceKernelGetPsmIntdevModeForRcmgr",
-    "sceKernelGetPsnAccessTraceLogForRcmgr",
-    "sceKernelGetQafExpirationTimeNotafterForRcmgr",
-    "sceKernelGetQafExpirationTimeNotbeforeForRcmgr",
-    "sceKernelGetQafGenerationForRcmgr",
-    "sceKernelGetQafNameForRcmgr",
-    "sceKernelGetRenderingMode",
-    "sceKernelGetResidentCount",
-    "sceKernelGetResidentFmemCount",
-    "sceKernelGetSafemode",
-    "sceKernelGetSanitizerMallocReplace",
-    "sceKernelGetSanitizerMallocReplaceExternal",
-    "sceKernelGetSanitizerNewReplace",
-    "sceKernelGetSanitizerNewReplaceExternal",
-    "sceKernelGetSocPowerConsumption",
-    "sceKernelGetSocSensorTemperature",
-    "sceKernelGetSpecialIForRcmgr",
-    "sceKernelGetSubsysId",
-    "sceKernelGetSystemExVersion",
-    "sceKernelGetSystemLevelDebuggerModeForRcmgr",
-    "sceKernelGetSystemSwBeta",
-    "sceKernelGetSystemSwVersion",
-    "sceKernelGetThreadName",
-    "sceKernelGettimeofday",
-    "sceKernelGettimezone",
-    "sceKernelGetTraceMemoryStats",
-    "sceKernelGetTscFrequency",
-    "sceKernelGetUtokenDataExecutionForRcmgr",
-    "sceKernelGetUtokenExpirationTimeNotafterForRcmgr",
-    "sceKernelGetUtokenExpirationTimeNotbeforeForRcmgr",
-    "sceKernelGetUtokenFakeSharefactoryForRcmgr",
-    "sceKernelGetUtokenFlagedUpdaterForRcmgr",
-    "sceKernelGetUtokenNpEnvSwitchingForRcmgr",
-    "sceKernelGetUtokenSaveDataRepairForRcmgr",
-    "sceKernelGetUtokenStoreModeForRcmgr",
-    "sceKernelGetUtokenUseSoftwagnerForAcmgr",
-    "sceKernelGetUtokenUseSoftwagnerForRcmgr",
-    "sceKernelGetUtokenWeakenedPortRestrictionForRcmgr",
-    "sceKernelGetVrCaptureSize",
-    "sceKernelHasNeoMode",
-    "sceKernelHwHasOpticalOut",
-    "sceKernelHwHasWlanBt",
-    "sceKernelIccControlBDPowerState",
-    "sceKernelIccControlUSBPowerState",
-    "sceKernelIccGetBDPowerState",
-    "sceKernelIccGetCountTime",
-    "sceKernelIccGetCPMode",
-    "sceKernelIccGetCpuInfoBit",
-    "sceKernelIccGetErrLog",
-    "sceKernelIccGetHwInfo",
-    "sceKernelIccGetPowerNumberOfBootShutdown",
-    "sceKernelIccGetPowerOperatingTime",
-    "sceKernelIccGetPowerUpCause",
-    "sceKernelIccGetSysEventLog",
-    "sceKernelIccGetThermalAlert",
-    "sceKernelIccGetUSBPowerState",
-    "sceKernelIccIndicatorBootDone",
-    "sceKernelIccIndicatorShutdown",
-    "sceKernelIccIndicatorStandby",
-    "sceKernelIccIndicatorStandbyBoot",
-    "sceKernelIccIndicatorStandbyShutdown",
-    "sceKernelIccNotifyBootStatus",
-    "sceKernelIccNvsFlush",
-    "sceKernelIccReadPowerBootMessage",
-    "sceKernelIccSetBuzzer",
-    "sceKernelIccSetCPMode",
-    "sceKernelIccSetCpuInfoBit",
-    "sceKernelIccSetDownloadMode",
-    "sceKernelInstallExceptionHandler",
-    "sceKernelInternalGetKmemStatistics",
-    "sceKernelInternalGetMapStatistics",
-    "sceKernelInternalHeapPrintBacktraceWithModuleInfo",
-    "sceKernelInternalMapDirectMemory",
-    "sceKernelInternalMapNamedDirectMemory",
-    "sceKernelInternalMemoryGetAvailableSize",
-    "sceKernelInternalMemoryGetModuleSegmentInfo",
-    "sceKernelInternalResumeDirectMemoryRelease",
-    "sceKernelInternalSuspendDirectMemoryRelease",
-    "sceKernelIsAddressSanitizerEnabled",
-    "sceKernelIsAllowedToSelectDvdRegion",
-    "sceKernelIsAuthenticNeo",
-    "sceKernelIsCEX",
-    "sceKernelIsDebuggerAttached",
-    "sceKernelIsDevKit",
-    "sceKernelIsExperimentalBeta",
-    "sceKernelIsGenuineCEX",
-    "sceKernelIsGenuineDevKit",
-    "sceKernelIsGenuineKratosCex",
-    "sceKernelIsGenuineN",
-    "sceKernelIsGenuineTestKit",
-    "sceKernelIsInSandbox",
-    "sceKernelIsKratos",
-    "sceKernelIsMainOnStanbyMode",
-    "sceKernelIsMainOnStandbyMode",
-    "sceKernelIsNeoMode",
-    "sceKernelIsStack",
-    "sceKernelIsTestKit",
-    "sceKernelJitCreateAliasOfSharedMemory",
-    "sceKernelJitCreateSharedMemory",
-    "sceKernelJitGetSharedMemoryInfo",
-    "sceKernelJitMapSharedMemory",
-    "sceKernelKernelHeapUsage",
-    "sceKernelLoadStartModule",
-    "sceKernelLoadStartModuleForSysmodule",
-    "sceKernelLseek",
-    "sceKernelLwfsAllocateBlock",
-    "sceKernelLwfsLseek",
-    "sceKernelLwfsSetAttribute",
-    "sceKernelLwfsTrimBlock",
-    "sceKernelLwfsWrite",
-    "sceKernelMapDirectMemory",
-    "sceKernelMapDirectMemory2",
-    "sceKernelMapFlexibleMemory",
-    "sceKernelMapNamedDirectMemory",
-    "sceKernelMapNamedFlexibleMemory",
-    "sceKernelMapNamedSystemFlexibleMemory",
-    "sceKernelMapSanitizerShadowMemory",
-    "sceKernelMapTraceMemory",
-    "sceKernelMemoryPoolBatch",
-    "sceKernelMemoryPoolCommit",
-    "sceKernelMemoryPoolDecommit",
-    "sceKernelMemoryPoolExpand",
-    "sceKernelMemoryPoolGetBlockStats",
-    "sceKernelMemoryPoolMove",
-    "sceKernelMemoryPoolReserve",
-    "sceKernelMkdir",
-    "sceKernelMlock",
-    "sceKernelMlockall",
-    "sceKernelMmap",
-    "sceKernelMprotect",
-    "sceKernelMsync",
-    "sceKernelMtypeprotect",
-    "sceKernelMunlock",
-    "sceKernelMunlockall",
-    "sceKernelMunmap",
-    "sceKernelNanosleep",
-    "sceKernelNormalizePath",
-    "sceKernelNotifyAppStateChanged",
-    "sceKernelNotifySystemSuspendResumeProgress",
-    "sceKernelNotifySystemSuspendStart",
-    "sceKernelOpen",
-    "sceKernelOpenEport",
-    "sceKernelOpenEventFlag",
-    "sceKernelOpenSema",
-    "sceKernelPollEventFlag",
-    "sceKernelPollSema",
-    "sceKernelPread",
-    "sceKernelPreadv",
-    "sceKernelPrintBacktraceWithModuleInfo",
-    "sceKernelProtectDirectMemory",
-    "sceKernelProtectDirectMemoryForPID",
-    "sceKernelPwrite",
-    "sceKernelPwritev",
-    "sceKernelQueryMemoryProtection",
-    "sceKernelQueryTraceMemory",
-    "sceKernelRaiseException",
-    "sceKernelRandomizedPath",
-    "sceKernelRdup",
-    "sceKernelRead",
-    "sceKernelReadTsc",
-    "sceKernelReadv",
-    "sceKernelReboot",
-    "sceKernelReleaseDirectMemory",
-    "sceKernelReleaseFlexibleMemory",
-    "sceKernelReleaseTraceDirectMemory",
-    "sceKernelRemoveExceptionHandler",
-    "sceKernelRename",
-    "sceKernelReportUnpatchedFunctionCall",
-    "sceKernelReserve2mbPage",
-    "sceKernelReserveSystemDirectMemory",
-    "sceKernelReserveVirtualRange",
-    "sceKernelResumeDirectMemoryRelease",
-    "sceKernelRmdir",
-    "sceKernelRtldControl",
-    "sceKernelSandboxPath",
-    "sceKernelSendNotificationRequest",
-    "sceKernelSetAppInfo",
-    "sceKernelSetBackupRestoreMode",
-    "sceKernelSetBaseModeClock",
-    "sceKernelSetBesteffort",
-    "sceKernelSetBootReqNotify",
-    "sceKernelSetCallRecord",
-    "sceKernelSetCompressionAttribute",
-    "sceKernelSetCpumodeGame",
-    "sceKernelSetDataTransferMode",
-    "sceKernelSetEventFlag",
-    "sceKernelSetFsstParam",
-    "sceKernelSetGameDirectMemoryLimit",
-    "sceKernelSetGPI",
-    "sceKernelSetGPO",
-    "sceKernelSetGpuCu",
-    "sceKernelSetMemoryPstate",
-    "sceKernelSetNeoModeClock",
-    "sceKernelSetPhysFmemLimit",
-    "sceKernelSetProcessName",
-    "sceKernelSetProcessProperty",
-    "sceKernelSetProcessPropertyString",
-    "sceKernelSetPrtAperture",
-    "sceKernelSetSafemode",
-    "sceKernelSettimeofday",
-    "sceKernelSetTimezoneInfo",
-    "sceKernelSetVirtualRangeName",
-    "sceKernelSetVmContainer",
-    "sceKernelSignalSema",
-    "sceKernelSleep",
-    "sceKernelSlvNotifyError",
-    "sceKernelStat",
-    "sceKernelStopUnloadModule",
-    "sceKernelSuspendDirectMemoryRelease",
-    "sceKernelSwitchToBaseMode",
-    "sceKernelSwitchToNeoMode",
-    "sceKernelSync",
-    "sceKernelTerminateSysCore",
-    "sceKernelTitleWorkaroundIsEnabled",
-    "sceKernelTitleWorkdaroundIsEnabled",
-    "sceKernelTraceMemoryTypeProtect",
-    "sceKernelTriggerEport",
-    "sceKernelTriggerUserEvent",
-    "sceKernelTruncate",
-    "sceKernelUnlink",
-    "sceKernelUsleep",
-    "sceKernelUtimes",
-    "sceKernelUuidCreate",
-    "sceKernelVirtualQuery",
-    "sceKernelVirtualQueryAll",
-    "sceKernelWaitEqueue",
-    "sceKernelWaitEventFlag",
-    "sceKernelWaitSema",
-    "sceKernelWrite",
-    "sceKernelWriteSdkEventLog",
-    "sceKernelWritev",
-    "sceKernelYieldCpumode",
-]
-
-libkernel_nids = []
-
-for symbol in libkernel_symbols:
-    libkernel_nids.append("\0" + calculateNID(symbol) + "#")
-
-sceAppContentInitialize_nid = f'\0{calculateNID("sceAppContentInitialize")}#'
-sceAppContentInitialize_nid_pos = -1
-libSceAppContent_nid_suffix = None
-
-with open(input_file, "rb") as f:
-    bin = Binary(f)
-
-    SEGPERM_EXEC = 1
-    SEGPERM_WRITE = 2
-    SEGPERM_READ = 4
-    for segment in bin.E_SEGMENTS:
-        if segment.flags() == (SEGPERM_EXEC | SEGPERM_READ):  # is code segment
-            # check if filesize and memsize need to be increased
-            t_new_segment_size = unused_space_at_end_of_code_segment_bounds.unused_space_start + \
-                no_of_bytes_required_for_patches_in_eboot - \
-                unused_space_at_end_of_code_segment_bounds.segment_start
-            if segment.FILE_SIZE < t_new_segment_size:
-                print(
-                    f"Segment FILE_SIZE needs patching: (filesize){get_hex(segment.FILE_SIZE)} < (new size){get_hex(t_new_segment_size)}")
-                patches.append(
-                    (segment.SEGMENT_FILE_SIZE_OFFSET, format_displacement(t_new_segment_size, 8), "PHT code seg FILE_SIZE"))
+    # if this is true then the align is already part of the code segment (ida interprets it as part of the code segment if the align field in the pht is set to 4k?)
+    # find the offset where the zeroes begin
+    if unused_space_at_end_of_code_segment_bounds is None or unused_space_at_end_of_code_segment_bounds.unused_space_end - unused_space_at_end_of_code_segment_bounds.unused_space_start < no_of_bytes_required_for_patches_in_eboot:
+        code_segment = idaapi.get_segm_by_name("CODE")
+        # we already know the start of the next is the same
+        code_segment_end = code_segment.end_ea - 1
+        zeroes_count = 0
+        last_byte = 0
+        while last_byte == 0:
+            if not idc.is_loaded(code_segment_end - zeroes_count):
+                last_byte = 0
             else:
-                print(
-                    f"Segment FILE_SIZE does not need patching: (filesize){get_hex(segment.FILE_SIZE)} >= (new size){get_hex(t_new_segment_size)}")
-            if segment.MEM_SIZE < t_new_segment_size:
-                print(
-                    f"Segment MEM_SIZE needs patching: (memsize){get_hex(segment.MEM_SIZE)} < (new size){get_hex(t_new_segment_size)}")
-                patches.append(
-                    (segment.SEGMENT_MEM_SIZE_OFFSET, format_displacement(t_new_segment_size, 8), "PHT code seg MEM_SIZE"))
-            else:
-                print(
-                    f"Segment MEM_SIZE does not need patching: (memsize){get_hex(segment.MEM_SIZE)} >= (new size){get_hex(t_new_segment_size)}")
-            break
+                last_byte = idc.get_wide_byte(code_segment_end - zeroes_count)
 
-    f.seek(0)
-    chunk_size = 1024 * 1024
-    offset = 0
-    while True:
-        chunk = f.read(chunk_size)
-        if not chunk:
-            break
+            if last_byte == 0:
+                zeroes_count += 1
 
-        if use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch:
-            if sceAppContentInitialize_nid_pos == -1:
-                sceAppContentInitialize_nid_pos = chunk.find(
-                    sceAppContentInitialize_nid.encode("ascii"))
-                if sceAppContentInitialize_nid_pos != -1:
-                    sceAppContentInitialize_nid_pos = offset + \
-                        sceAppContentInitialize_nid_pos + 1
-                    t_pos = f.tell()
-                    f.seek(sceAppContentInitialize_nid_pos + 11)
-                    libSceAppContent_nid_suffix = ""
-                    while True:
-                        t_byte = f.read(1)
-                        if t_byte == b"\x00":
-                            break
-                        libSceAppContent_nid_suffix = libSceAppContent_nid_suffix + t_byte.decode(
-                            "ascii")
-                    f.seek(t_pos)
+        unused_space_at_end_of_code_segment_bounds = SegmentInfo(
+            code_segment_end - zeroes_count + 1, code_segment_end, code_segment_end, code_segment.start_ea)
+        print(
+            f"Unused space at end of code segment: {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_start)} - {get_hex(unused_space_at_end_of_code_segment_bounds.unused_space_end)}")
+
+    if unused_space_at_end_of_code_segment_bounds is None or unused_space_at_end_of_code_segment_bounds.unused_space_end - unused_space_at_end_of_code_segment_bounds.unused_space_start < no_of_bytes_required_for_patches_in_eboot:
+        # set to None so i can easily check if we need to fall back to string patching
+        # if there isnt enough space in the align
+        unused_space_at_end_of_code_segment_bounds = None
+        print("Using string as space for patches because not enough free space at end of code segment")
+        raise Exception("String fallback not implemented")
+
+
+    use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch = False
+    sceKernelLoadStartModule_address = idaapi.get_name_ea(
+        idaapi.BADADDR, "sceKernelLoadStartModule")
+    if sceKernelLoadStartModule_address == idaapi.BADADDR:
+        print("sceKernelLoadStartModule not found, using sceAppContentInitialize to sceKernelLoadStartModule patch")
+        use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch = True
+        sceKernelLoadStartModule_address = idaapi.get_name_ea(
+            idaapi.BADADDR, "sceAppContentInitialize")
+        if sceKernelLoadStartModule_address == idaapi.BADADDR:
+            raise Exception("sceAppContentInitialize function not found")
+        sceKernelLoadStartModule_address = idaapi.get_func(
+            sceKernelLoadStartModule_address).start_ea
+    else:
+        print("sceKernelLoadStartModule found")
+        sceKernelLoadStartModule_address = idaapi.get_func(
+            sceKernelLoadStartModule_address).start_ea
+
+    prx_loader_bytes_start = unused_space_at_end_of_code_segment_bounds.unused_space_start
+    prx_loader_bytes = get_prx_loader_asm_bytes(
+        prx_loader_bytes_start, sceKernelLoadStartModule_address, prx_loader_bytes_start + prx_loader_code_length)
+
+
+    # find where sceSysmoduleLoadModule with 0xb4 (libSceAppContent) is called
+    sceSysmoduleLoadModule = idaapi.get_name_ea(
+        idaapi.BADADDR, 'sceSysmoduleLoadModule')
+
+    refs = sorted(list(idautils.CodeRefsTo(sceSysmoduleLoadModule, 0)))
+
+    # some games call sceSysmoduleLoadModule multiple times for libSceAppContent (cusa05332)
+    sceSysmoduleLoadModule_patches = []
+
+    found = False
+
+    for ref in refs:
+        prev_head = idc.prev_head(ref)
+        count = 0
+
+        while prev_head != idaapi.BADADDR and count < 10:
+            mnem = idc.print_insn_mnem(prev_head)
+            if mnem == 'mov' and idc.print_operand(prev_head, 0) == 'edi':
+                value = idc.get_operand_value(prev_head, 1)
+                # 0xB4 is libSceAppContent
+                if value == 0xB4:
+                    # if t_sceSysmoduleLoadModule_patches already has a reference to this address, skip it
+                    # sometimes the next call to sceSysmoduleLoadModule is within 10 instructions
+                    # so it would recognize the others parameter
+                    if prev_head in [x[1] for x in sceSysmoduleLoadModule_patches]:
+                        # print(
+                        #     f"Skipping reference to sceSysmoduleLoadModule for libSceAppContent at {get_hex(ref)}")
+                        break
+
                     print(
-                        f"Found libSceAppContent nid suffix: {libSceAppContent_nid_suffix}")
-                    print(
-                        f"Found sceAppContentInitialize nid at offset (real) {get_hex(sceAppContentInitialize_nid_pos)}")
+                        f"sceSysmoduleLoadModule for libSceAppContent at {get_hex(ref)} | mov edi addr: {get_hex(prev_head)}")
 
-            if libkernel_nid_suffix is None:
-                for libkernel_nid in libkernel_nids:
-                    index = chunk.find(libkernel_nid.encode("ascii"))
-                    if index != -1:
+                    sceSysmoduleLoadModule_patches.append([ref, prev_head])
+
+            prev_head = idc.prev_head(prev_head)
+            count += 1
+
+    if len(sceSysmoduleLoadModule_patches) == 0:
+        raise Exception("sceSysmoduleLoadModule for libSceAppContent not found")
+
+
+    # patch out sceAppContentInitialize calls, as they arent used, and might be replaced with sceKernelLoadStartModule
+    sceAppContentInitialize = idaapi.get_name_ea(
+        idaapi.BADADDR, 'sceAppContentInitialize')
+
+    sceAppContentInitialize_patches = []
+
+    for xref in idautils.XrefsTo(sceAppContentInitialize, 0):
+        if xref.type == idaapi.fl_CN or xref.type == idaapi.fl_JN:
+            # if xref is the function definition, skip it
+            if xref.frm == idaapi.get_func(sceAppContentInitialize).start_ea:
+                continue
+
+            print(
+                f"Found reference to sceAppContentInitialize at {get_hex(xref.frm)} | type: {xref.type}")
+            sceAppContentInitialize_patches.append(xref)
+
+    if len(sceAppContentInitialize_patches) == 0:
+        raise Exception("No references to sceAppContentInitialize found")
+
+    input_file = idaapi.get_input_file_path()
+
+    replacements = [
+        ("libSceAppContentUtil\0".encode("ascii"),
+            "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
+        ("libSceAppContent\0".encode("ascii"),
+            "dlcldr\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
+        ("libSceAppContentBundle\0".encode("ascii"),
+            "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
+        ("libSceAppContentIro\0".encode("ascii"),
+            "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
+        ("libSceAppContentPft\0".encode("ascii"),
+            "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
+        ("libSceAppContentSc\0".encode("ascii"),
+            "dlcldr\0\0\0\0\0\0\0\0\0\0\0\0\0".encode("ascii"), False),
+    ]
+
+    patches = []
+
+    # add prx loader bytes & prx path to patches
+    prx_loader_with_path_and_terminator_bytes = prx_loader_bytes + \
+        prx_path.encode("ascii") + b"\x00"
+
+
+    libkernel_nid_suffix = None
+
+    libkernel_symbols = [
+        "sceKernelAddCpumodeEvent",
+        "sceKernelAddFileEvent",
+        "sceKernelAddGpuExceptionEvent",
+        "sceKernelAddHRTimerEvent",
+        "sceKernelAddReadEvent",
+        "sceKernelAddTimerEvent",
+        "sceKernelAddUserEvent",
+        "sceKernelAddUserEventEdge",
+        "sceKernelAddWriteEvent",
+        "sceKernelAioCancelRequest",
+        "sceKernelAioCancelRequests",
+        "sceKernelAioDeleteRequest",
+        "sceKernelAioDeleteRequests",
+        "sceKernelAioInitializeImpl",
+        "sceKernelAioInitializeParam",
+        "sceKernelAioPollRequest",
+        "sceKernelAioPollRequests",
+        "sceKernelAioSetParam",
+        "sceKernelAioSubmitReadCommands",
+        "sceKernelAioSubmitReadCommandsMultiple",
+        "sceKernelAioSubmitWriteCommands",
+        "sceKernelAioSubmitWriteCommandsMultiple",
+        "sceKernelAioWaitRequest",
+        "sceKernelAioWaitRequests",
+        "sceKernelAllocateDirectMemory",
+        "sceKernelAllocateDirectMemoryForMiniApp",
+        "sceKernelAllocateMainDirectMemory",
+        "sceKernelAllocateTraceDirectMemory",
+        "sceKernelAvailableDirectMemorySize",
+        "sceKernelAvailableFlexibleMemorySize",
+        "sceKernelBacktraceSelf",
+        "sceKernelBatchMap",
+        "sceKernelBatchMap2",
+        "sceKernelCancelEventFlag",
+        "sceKernelCancelSema",
+        "sceKernelCheckedReleaseDirectMemory",
+        "sceKernelCheckReachability",
+        "sceKernelChmod",
+        "sceKernelClearBootReqNotifyCount",
+        "sceKernelClearEventFlag",
+        "sceKernelClearGameDirectMemory",
+        "sceKernelClockGetres",
+        "sceKernelClockGettime",
+        "sceKernelClose",
+        "sceKernelCloseEport",
+        "sceKernelCloseEventFlag",
+        "sceKernelCloseSema",
+        "sceKernelConfiguredFlexibleMemorySize",
+        "sceKernelConvertLocaltimeToUtc",
+        "sceKernelConvertUtcToLocaltime",
+        "sceKernelCreateEport",
+        "sceKernelCreateEqueue",
+        "sceKernelCreateEventFlag",
+        "sceKernelCreateSema",
+        "sceKernelDebugAcquireAndUpdateDebugRegister",
+        "sceKernelDebugGetAppStatus",
+        "sceKernelDebugGetPauseCount",
+        "sceKernelDebugGpuPaDebugIsInProgress",
+        "sceKernelDebugOutText",
+        "sceKernelDebugRaiseException",
+        "sceKernelDebugRaiseExceptionOnReleaseMode",
+        "sceKernelDebugRaiseExceptionWithContext",
+        "sceKernelDebugRaiseExceptionWithInfo",
+        "sceKernelDebugReleaseDebugContext",
+        "sceKernelDeleteCpumodeEvent",
+        "sceKernelDeleteEport",
+        "sceKernelDeleteEqueue",
+        "sceKernelDeleteEventFlag",
+        "sceKernelDeleteFileEvent",
+        "sceKernelDeleteGpuExceptionEvent",
+        "sceKernelDeleteHRTimerEvent",
+        "sceKernelDeleteReadEvent",
+        "sceKernelDeleteSema",
+        "sceKernelDeleteTimerEvent",
+        "sceKernelDeleteUserEvent",
+        "sceKernelDeleteWriteEvent",
+        "sceKernelDirectMemoryQuery",
+        "sceKernelDirectMemoryQueryForId",
+        "sceKernelDlsym",
+        "sceKernelEnableDmemAliasing",
+        "sceKernelEnableDmemAliasing2",
+        "sceKernelEnablePthreadObjectCheck",
+        "sceKernelError",
+        "sceKernelEventLogInit",
+        "sceKernelEventLogPread",
+        "sceKernelEventLogRead",
+        "sceKernelEventLogWrite",
+        "sceKernelFchmod",
+        "sceKernelFcntl",
+        "sceKernelFdatasync",
+        "sceKernelFlock",
+        "sceKernelFstat",
+        "sceKernelFsync",
+        "sceKernelFtruncate",
+        "sceKernelFutimes",
+        "sceKernelGetAllowedSdkVersionOnSystem",
+        "sceKernelGetAppInfo",
+        "sceKernelGetAslrStatus",
+        "sceKernelGetBackupRestoreMode",
+        "sceKernelGetBackupRestoreModeOfNextBoot",
+        "sceKernelGetBasicProductShape",
+        "sceKernelGetBetaUpdateTestForRcmgr",
+        "sceKernelGetBioUsageAll",
+        "sceKernelGetBootReqNotifyCount",
+        "sceKernelGetCallRecord",
+        "sceKernelGetCompiledSdkVersion",
+        "sceKernelGetCompiledSdkVersionByPath",
+        "sceKernelGetCompiledSdkVersionByPid",
+        "sceKernelGetCpuFrequency",
+        "sceKernelGetCpumode",
+        "sceKernelGetCpumodeGame",
+        "sceKernelGetCpuTemperature",
+        "sceKernelGetCpuUsage",
+        "sceKernelGetCpuUsageAll",
+        "sceKernelGetCpuUsageProc",
+        "sceKernelGetCpuUsageProc2",
+        "sceKernelGetCpuUsageThread",
+        "sceKernelGetCurrentCpu",
+        "sceKernelGetDataTransferMode",
+        "sceKernelGetDebugMenuMiniModeForRcmgr",
+        "sceKernelGetDebugMenuModeForPsmForRcmgr",
+        "sceKernelGetDebugMenuModeForRcmgr",
+        "sceKernelGetdents",
+        "sceKernelGetDirectMemorySize",
+        "sceKernelGetDirectMemoryType",
+        "sceKernelGetdirentries",
+        "sceKernelGetEventData",
+        "sceKernelGetEventError",
+        "sceKernelGetEventFflags",
+        "sceKernelGetEventFilter",
+        "sceKernelGetEventId",
+        "sceKernelGetEventUserData",
+        "sceKernelGetExecutableModuleHandle",
+        "sceKernelGetExtLibcHandle",
+        "sceKernelGetFakeFinalizeMenuForRcmgr",
+        "sceKernelGetFlagedUpdaterForRcmgr",
+        "sceKernelGetForceUpdateModeForRcmgr",
+        "sceKernelGetFsSandboxRandomWord",
+        "sceKernelGetGPI",
+        "sceKernelGetGPO",
+        "sceKernelGetHwFeatureInfoForDecid",
+        "sceKernelGetIdPs",
+        "sceKernelGetIdTableCurrentCount",
+        "sceKernelGetIpcPath",
+        "sceKernelGetLibkernelTextLocation",
+        "sceKernelGetMainSocId",
+        "sceKernelGetModuleInfo",
+        "sceKernelGetModuleInfoForUnwind",
+        "sceKernelGetModuleInfoFromAddr",
+        "sceKernelGetModuleInfoInternal",
+        "sceKernelGetModuleList",
+        "sceKernelGetModuleListInternal",
+        "sceKernelGetOpenPsIdForSystem",
+        "sceKernelGetPageTableStats",
+        "sceKernelGetPagingStatsOfAllObjects",
+        "sceKernelGetPagingStatsOfAllThreads",
+        "sceKernelGetPhysPageSize",
+        "sceKernelGetProcessName",
+        "sceKernelGetProcessTime",
+        "sceKernelGetProcessTimeCounter",
+        "sceKernelGetProcessTimeCounterFrequency",
+        "sceKernelGetProcessType",
+        "sceKernelGetProcParam",
+        "sceKernelGetProductCode",
+        "sceKernelGetProductStr",
+        "sceKernelGetPrtAperture",
+        "sceKernelGetPsmIntdevModeForRcmgr",
+        "sceKernelGetPsnAccessTraceLogForRcmgr",
+        "sceKernelGetQafExpirationTimeNotafterForRcmgr",
+        "sceKernelGetQafExpirationTimeNotbeforeForRcmgr",
+        "sceKernelGetQafGenerationForRcmgr",
+        "sceKernelGetQafNameForRcmgr",
+        "sceKernelGetRenderingMode",
+        "sceKernelGetResidentCount",
+        "sceKernelGetResidentFmemCount",
+        "sceKernelGetSafemode",
+        "sceKernelGetSanitizerMallocReplace",
+        "sceKernelGetSanitizerMallocReplaceExternal",
+        "sceKernelGetSanitizerNewReplace",
+        "sceKernelGetSanitizerNewReplaceExternal",
+        "sceKernelGetSocPowerConsumption",
+        "sceKernelGetSocSensorTemperature",
+        "sceKernelGetSpecialIForRcmgr",
+        "sceKernelGetSubsysId",
+        "sceKernelGetSystemExVersion",
+        "sceKernelGetSystemLevelDebuggerModeForRcmgr",
+        "sceKernelGetSystemSwBeta",
+        "sceKernelGetSystemSwVersion",
+        "sceKernelGetThreadName",
+        "sceKernelGettimeofday",
+        "sceKernelGettimezone",
+        "sceKernelGetTraceMemoryStats",
+        "sceKernelGetTscFrequency",
+        "sceKernelGetUtokenDataExecutionForRcmgr",
+        "sceKernelGetUtokenExpirationTimeNotafterForRcmgr",
+        "sceKernelGetUtokenExpirationTimeNotbeforeForRcmgr",
+        "sceKernelGetUtokenFakeSharefactoryForRcmgr",
+        "sceKernelGetUtokenFlagedUpdaterForRcmgr",
+        "sceKernelGetUtokenNpEnvSwitchingForRcmgr",
+        "sceKernelGetUtokenSaveDataRepairForRcmgr",
+        "sceKernelGetUtokenStoreModeForRcmgr",
+        "sceKernelGetUtokenUseSoftwagnerForAcmgr",
+        "sceKernelGetUtokenUseSoftwagnerForRcmgr",
+        "sceKernelGetUtokenWeakenedPortRestrictionForRcmgr",
+        "sceKernelGetVrCaptureSize",
+        "sceKernelHasNeoMode",
+        "sceKernelHwHasOpticalOut",
+        "sceKernelHwHasWlanBt",
+        "sceKernelIccControlBDPowerState",
+        "sceKernelIccControlUSBPowerState",
+        "sceKernelIccGetBDPowerState",
+        "sceKernelIccGetCountTime",
+        "sceKernelIccGetCPMode",
+        "sceKernelIccGetCpuInfoBit",
+        "sceKernelIccGetErrLog",
+        "sceKernelIccGetHwInfo",
+        "sceKernelIccGetPowerNumberOfBootShutdown",
+        "sceKernelIccGetPowerOperatingTime",
+        "sceKernelIccGetPowerUpCause",
+        "sceKernelIccGetSysEventLog",
+        "sceKernelIccGetThermalAlert",
+        "sceKernelIccGetUSBPowerState",
+        "sceKernelIccIndicatorBootDone",
+        "sceKernelIccIndicatorShutdown",
+        "sceKernelIccIndicatorStandby",
+        "sceKernelIccIndicatorStandbyBoot",
+        "sceKernelIccIndicatorStandbyShutdown",
+        "sceKernelIccNotifyBootStatus",
+        "sceKernelIccNvsFlush",
+        "sceKernelIccReadPowerBootMessage",
+        "sceKernelIccSetBuzzer",
+        "sceKernelIccSetCPMode",
+        "sceKernelIccSetCpuInfoBit",
+        "sceKernelIccSetDownloadMode",
+        "sceKernelInstallExceptionHandler",
+        "sceKernelInternalGetKmemStatistics",
+        "sceKernelInternalGetMapStatistics",
+        "sceKernelInternalHeapPrintBacktraceWithModuleInfo",
+        "sceKernelInternalMapDirectMemory",
+        "sceKernelInternalMapNamedDirectMemory",
+        "sceKernelInternalMemoryGetAvailableSize",
+        "sceKernelInternalMemoryGetModuleSegmentInfo",
+        "sceKernelInternalResumeDirectMemoryRelease",
+        "sceKernelInternalSuspendDirectMemoryRelease",
+        "sceKernelIsAddressSanitizerEnabled",
+        "sceKernelIsAllowedToSelectDvdRegion",
+        "sceKernelIsAuthenticNeo",
+        "sceKernelIsCEX",
+        "sceKernelIsDebuggerAttached",
+        "sceKernelIsDevKit",
+        "sceKernelIsExperimentalBeta",
+        "sceKernelIsGenuineCEX",
+        "sceKernelIsGenuineDevKit",
+        "sceKernelIsGenuineKratosCex",
+        "sceKernelIsGenuineN",
+        "sceKernelIsGenuineTestKit",
+        "sceKernelIsInSandbox",
+        "sceKernelIsKratos",
+        "sceKernelIsMainOnStanbyMode",
+        "sceKernelIsMainOnStandbyMode",
+        "sceKernelIsNeoMode",
+        "sceKernelIsStack",
+        "sceKernelIsTestKit",
+        "sceKernelJitCreateAliasOfSharedMemory",
+        "sceKernelJitCreateSharedMemory",
+        "sceKernelJitGetSharedMemoryInfo",
+        "sceKernelJitMapSharedMemory",
+        "sceKernelKernelHeapUsage",
+        "sceKernelLoadStartModule",
+        "sceKernelLoadStartModuleForSysmodule",
+        "sceKernelLseek",
+        "sceKernelLwfsAllocateBlock",
+        "sceKernelLwfsLseek",
+        "sceKernelLwfsSetAttribute",
+        "sceKernelLwfsTrimBlock",
+        "sceKernelLwfsWrite",
+        "sceKernelMapDirectMemory",
+        "sceKernelMapDirectMemory2",
+        "sceKernelMapFlexibleMemory",
+        "sceKernelMapNamedDirectMemory",
+        "sceKernelMapNamedFlexibleMemory",
+        "sceKernelMapNamedSystemFlexibleMemory",
+        "sceKernelMapSanitizerShadowMemory",
+        "sceKernelMapTraceMemory",
+        "sceKernelMemoryPoolBatch",
+        "sceKernelMemoryPoolCommit",
+        "sceKernelMemoryPoolDecommit",
+        "sceKernelMemoryPoolExpand",
+        "sceKernelMemoryPoolGetBlockStats",
+        "sceKernelMemoryPoolMove",
+        "sceKernelMemoryPoolReserve",
+        "sceKernelMkdir",
+        "sceKernelMlock",
+        "sceKernelMlockall",
+        "sceKernelMmap",
+        "sceKernelMprotect",
+        "sceKernelMsync",
+        "sceKernelMtypeprotect",
+        "sceKernelMunlock",
+        "sceKernelMunlockall",
+        "sceKernelMunmap",
+        "sceKernelNanosleep",
+        "sceKernelNormalizePath",
+        "sceKernelNotifyAppStateChanged",
+        "sceKernelNotifySystemSuspendResumeProgress",
+        "sceKernelNotifySystemSuspendStart",
+        "sceKernelOpen",
+        "sceKernelOpenEport",
+        "sceKernelOpenEventFlag",
+        "sceKernelOpenSema",
+        "sceKernelPollEventFlag",
+        "sceKernelPollSema",
+        "sceKernelPread",
+        "sceKernelPreadv",
+        "sceKernelPrintBacktraceWithModuleInfo",
+        "sceKernelProtectDirectMemory",
+        "sceKernelProtectDirectMemoryForPID",
+        "sceKernelPwrite",
+        "sceKernelPwritev",
+        "sceKernelQueryMemoryProtection",
+        "sceKernelQueryTraceMemory",
+        "sceKernelRaiseException",
+        "sceKernelRandomizedPath",
+        "sceKernelRdup",
+        "sceKernelRead",
+        "sceKernelReadTsc",
+        "sceKernelReadv",
+        "sceKernelReboot",
+        "sceKernelReleaseDirectMemory",
+        "sceKernelReleaseFlexibleMemory",
+        "sceKernelReleaseTraceDirectMemory",
+        "sceKernelRemoveExceptionHandler",
+        "sceKernelRename",
+        "sceKernelReportUnpatchedFunctionCall",
+        "sceKernelReserve2mbPage",
+        "sceKernelReserveSystemDirectMemory",
+        "sceKernelReserveVirtualRange",
+        "sceKernelResumeDirectMemoryRelease",
+        "sceKernelRmdir",
+        "sceKernelRtldControl",
+        "sceKernelSandboxPath",
+        "sceKernelSendNotificationRequest",
+        "sceKernelSetAppInfo",
+        "sceKernelSetBackupRestoreMode",
+        "sceKernelSetBaseModeClock",
+        "sceKernelSetBesteffort",
+        "sceKernelSetBootReqNotify",
+        "sceKernelSetCallRecord",
+        "sceKernelSetCompressionAttribute",
+        "sceKernelSetCpumodeGame",
+        "sceKernelSetDataTransferMode",
+        "sceKernelSetEventFlag",
+        "sceKernelSetFsstParam",
+        "sceKernelSetGameDirectMemoryLimit",
+        "sceKernelSetGPI",
+        "sceKernelSetGPO",
+        "sceKernelSetGpuCu",
+        "sceKernelSetMemoryPstate",
+        "sceKernelSetNeoModeClock",
+        "sceKernelSetPhysFmemLimit",
+        "sceKernelSetProcessName",
+        "sceKernelSetProcessProperty",
+        "sceKernelSetProcessPropertyString",
+        "sceKernelSetPrtAperture",
+        "sceKernelSetSafemode",
+        "sceKernelSettimeofday",
+        "sceKernelSetTimezoneInfo",
+        "sceKernelSetVirtualRangeName",
+        "sceKernelSetVmContainer",
+        "sceKernelSignalSema",
+        "sceKernelSleep",
+        "sceKernelSlvNotifyError",
+        "sceKernelStat",
+        "sceKernelStopUnloadModule",
+        "sceKernelSuspendDirectMemoryRelease",
+        "sceKernelSwitchToBaseMode",
+        "sceKernelSwitchToNeoMode",
+        "sceKernelSync",
+        "sceKernelTerminateSysCore",
+        "sceKernelTitleWorkaroundIsEnabled",
+        "sceKernelTitleWorkdaroundIsEnabled",
+        "sceKernelTraceMemoryTypeProtect",
+        "sceKernelTriggerEport",
+        "sceKernelTriggerUserEvent",
+        "sceKernelTruncate",
+        "sceKernelUnlink",
+        "sceKernelUsleep",
+        "sceKernelUtimes",
+        "sceKernelUuidCreate",
+        "sceKernelVirtualQuery",
+        "sceKernelVirtualQueryAll",
+        "sceKernelWaitEqueue",
+        "sceKernelWaitEventFlag",
+        "sceKernelWaitSema",
+        "sceKernelWrite",
+        "sceKernelWriteSdkEventLog",
+        "sceKernelWritev",
+        "sceKernelYieldCpumode",
+    ]
+
+    libkernel_nids = []
+
+    for symbol in libkernel_symbols:
+        libkernel_nids.append("\0" + calculateNID(symbol) + "#")
+
+    sceAppContentInitialize_nid = f'\0{calculateNID("sceAppContentInitialize")}#'
+    sceAppContentInitialize_nid_pos = -1
+    libSceAppContent_nid_suffix = None
+
+    with open(input_file, "rb") as f:
+        bin = Binary(f)
+
+        SEGPERM_EXEC = 1
+        SEGPERM_WRITE = 2
+        SEGPERM_READ = 4
+        for segment in bin.E_SEGMENTS:
+            if segment.flags() == (SEGPERM_EXEC | SEGPERM_READ):  # is code segment
+                # check if filesize and memsize need to be increased
+                t_new_segment_size = unused_space_at_end_of_code_segment_bounds.unused_space_start + \
+                    no_of_bytes_required_for_patches_in_eboot - \
+                    unused_space_at_end_of_code_segment_bounds.segment_start
+                if segment.FILE_SIZE < t_new_segment_size:
+                    print(
+                        f"Segment FILE_SIZE needs patching: (filesize){get_hex(segment.FILE_SIZE)} < (new size){get_hex(t_new_segment_size)}")
+                    patches.append(
+                        (segment.SEGMENT_FILE_SIZE_OFFSET, format_displacement(t_new_segment_size, 8), "PHT code seg FILE_SIZE"))
+                else:
+                    print(
+                        f"Segment FILE_SIZE does not need patching: (filesize){get_hex(segment.FILE_SIZE)} >= (new size){get_hex(t_new_segment_size)}")
+                if segment.MEM_SIZE < t_new_segment_size:
+                    print(
+                        f"Segment MEM_SIZE needs patching: (memsize){get_hex(segment.MEM_SIZE)} < (new size){get_hex(t_new_segment_size)}")
+                    patches.append(
+                        (segment.SEGMENT_MEM_SIZE_OFFSET, format_displacement(t_new_segment_size, 8), "PHT code seg MEM_SIZE"))
+                else:
+                    print(
+                        f"Segment MEM_SIZE does not need patching: (memsize){get_hex(segment.MEM_SIZE)} >= (new size){get_hex(t_new_segment_size)}")
+                break
+
+        f.seek(0)
+        chunk_size = 1024 * 1024
+        offset = 0
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+
+            if use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch:
+                if sceAppContentInitialize_nid_pos == -1:
+                    sceAppContentInitialize_nid_pos = chunk.find(
+                        sceAppContentInitialize_nid.encode("ascii"))
+                    if sceAppContentInitialize_nid_pos != -1:
+                        sceAppContentInitialize_nid_pos = offset + \
+                            sceAppContentInitialize_nid_pos + 1
                         t_pos = f.tell()
-                        f.seek(offset + index + 12)
-                        libkernel_nid_suffix = ""
+                        f.seek(sceAppContentInitialize_nid_pos + 11)
+                        libSceAppContent_nid_suffix = ""
                         while True:
                             t_byte = f.read(1)
                             if t_byte == b"\x00":
                                 break
-                            libkernel_nid_suffix = libkernel_nid_suffix + t_byte.decode(
+                            libSceAppContent_nid_suffix = libSceAppContent_nid_suffix + t_byte.decode(
                                 "ascii")
                         f.seek(t_pos)
                         print(
-                            f"Found libkernel nid suffix: {libkernel_nid_suffix} at offset (real) {get_hex(offset + index + 12)}")
-                        break
+                            f"Found libSceAppContent nid suffix: {libSceAppContent_nid_suffix}")
+                        print(
+                            f"Found sceAppContentInitialize nid at offset (real) {get_hex(sceAppContentInitialize_nid_pos)}")
 
-        for i in range(len(replacements)):
-            if replacements[i][2]:
-                continue
-            replacement = replacements[i]
-            index = chunk.find(replacement[0])
-            if index != -1:
-                patches.append(
-                    (offset + index, replacement[1], replacement[0].decode("ascii")))
-                replacements[i] = (replacement[0], replacement[1], True)
+                if libkernel_nid_suffix is None:
+                    for libkernel_nid in libkernel_nids:
+                        index = chunk.find(libkernel_nid.encode("ascii"))
+                        if index != -1:
+                            t_pos = f.tell()
+                            f.seek(offset + index + 12)
+                            libkernel_nid_suffix = ""
+                            while True:
+                                t_byte = f.read(1)
+                                if t_byte == b"\x00":
+                                    break
+                                libkernel_nid_suffix = libkernel_nid_suffix + t_byte.decode(
+                                    "ascii")
+                            f.seek(t_pos)
+                            print(
+                                f"Found libkernel nid suffix: {libkernel_nid_suffix} at offset (real) {get_hex(offset + index + 12)}")
+                            break
 
-        # for function_symbol_with_real_and_fake_nid in function_symbols_with_real_and_fake_nids:
-        #     if function_symbol_with_real_and_fake_nid[3]:
-        #         continue
-        #     real_nid = function_symbol_with_real_and_fake_nid[1]
-        #     index = chunk.find(real_nid.encode("ascii"))
-        #     if index != -1:
-        #         patches.append(
-        #             (offset + index, function_symbol_with_real_and_fake_nid[2].encode("ascii"), function_symbol_with_real_and_fake_nid[0]))
-        #         function_symbol_with_real_and_fake_nid = (
-        #             function_symbol_with_real_and_fake_nid[0], function_symbol_with_real_and_fake_nid[1], function_symbol_with_real_and_fake_nid[2], True)
+            for i in range(len(replacements)):
+                if replacements[i][2]:
+                    continue
+                replacement = replacements[i]
+                index = chunk.find(replacement[0])
+                if index != -1:
+                    patches.append(
+                        (offset + index, replacement[1], replacement[0].decode("ascii")))
+                    replacements[i] = (replacement[0], replacement[1], True)
 
-        for i in range(len(function_symbols_with_real_and_fake_nids)):
-            if function_symbols_with_real_and_fake_nids[i][3]:
-                continue
-            real_nid = function_symbols_with_real_and_fake_nids[i][1]
-            index = chunk.find(real_nid.encode("ascii"))
-            if index != -1:
-                patches.append(
-                    (offset + index, function_symbols_with_real_and_fake_nids[i][2].encode("ascii"), function_symbols_with_real_and_fake_nids[i][0]))
-                function_symbols_with_real_and_fake_nids[i] = (
-                    function_symbols_with_real_and_fake_nids[i][0], function_symbols_with_real_and_fake_nids[i][1], function_symbols_with_real_and_fake_nids[i][2], True)
+            # for function_symbol_with_real_and_fake_nid in function_symbols_with_real_and_fake_nids:
+            #     if function_symbol_with_real_and_fake_nid[3]:
+            #         continue
+            #     real_nid = function_symbol_with_real_and_fake_nid[1]
+            #     index = chunk.find(real_nid.encode("ascii"))
+            #     if index != -1:
+            #         patches.append(
+            #             (offset + index, function_symbol_with_real_and_fake_nid[2].encode("ascii"), function_symbol_with_real_and_fake_nid[0]))
+            #         function_symbol_with_real_and_fake_nid = (
+            #             function_symbol_with_real_and_fake_nid[0], function_symbol_with_real_and_fake_nid[1], function_symbol_with_real_and_fake_nid[2], True)
 
-        offset += len(chunk)
+            for i in range(len(function_symbols_with_real_and_fake_nids)):
+                if function_symbols_with_real_and_fake_nids[i][3]:
+                    continue
+                real_nid = function_symbols_with_real_and_fake_nids[i][1]
+                index = chunk.find(real_nid.encode("ascii"))
+                if index != -1:
+                    patches.append(
+                        (offset + index, function_symbols_with_real_and_fake_nids[i][2].encode("ascii"), function_symbols_with_real_and_fake_nids[i][0]))
+                    function_symbols_with_real_and_fake_nids[i] = (
+                        function_symbols_with_real_and_fake_nids[i][0], function_symbols_with_real_and_fake_nids[i][1], function_symbols_with_real_and_fake_nids[i][2], True)
 
-# appcontent and appcontentutil are required
-if not replacements[0][2] or not replacements[1][2]:
-    raise Exception("Not all module/library names found for replacement")
+            offset += len(chunk)
 
-nid_patches_count = sum(bool(x[3])
-                        for x in function_symbols_with_real_and_fake_nids)
-print(f"Number of nids found for replacement: {nid_patches_count}")
+    # appcontent and appcontentutil are required
+    if not replacements[0][2] or not replacements[1][2]:
+        raise Exception("Not all module/library names found for replacement")
 
-if nid_patches_count == 0:
-    raise Exception("No NIDs found for replacement")
+    nid_patches_count = sum(bool(x[3])
+                            for x in function_symbols_with_real_and_fake_nids)
+    print(f"Number of nids found for replacement: {nid_patches_count}")
 
-if use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch:
-    if libkernel_nid_suffix is None:
-        raise Exception("libkernel nid suffix not found")
+    if nid_patches_count == 0:
+        raise Exception("No NIDs found for replacement")
 
-    if sceAppContentInitialize_nid_pos == -1:
-        raise Exception("sceAppContentInitialize nid not found")
+    if use_sceAppContentInitialize_to_sceKernelLoadStartModule_patch:
+        if libkernel_nid_suffix is None:
+            raise Exception("libkernel nid suffix not found")
 
-    if len(libSceAppContent_nid_suffix) != len(libkernel_nid_suffix):
-        raise Exception(
-            "libSceAppContent nid suffix length != libkernel nid suffix length")
+        if sceAppContentInitialize_nid_pos == -1:
+            raise Exception("sceAppContentInitialize nid not found")
 
-    t_newnid = calculateNID("sceKernelLoadStartModule") + libkernel_nid_suffix
-    patches.append(
-        (sceAppContentInitialize_nid_pos, t_newnid.encode("ascii"), f"sceAppContentInitialize to sceKernelLoadStartModule nid [{t_newnid}]"))
-
-
-extraDataText = ""
-noExtraDataText = ""
-
-f = DlcContentIDInputForm(extraDataText, noExtraDataText)
-f.show_and_wait()
-
-extraDataText = f.txtLeft.value.replace(" ", "").replace(
-    "\n", "").replace("\r", "").replace("\t", "")
-noExtraDataText = f.txtRight.value.replace(" ", "").replace(
-    "\n", "").replace("\r", "").replace("\t", "")
-
-
-if len(extraDataText + noExtraDataText) == 0:
-    ida_kernwin.warning("No input")
-    exit()
-
-if len(extraDataText) % 16 != 0 or len(noExtraDataText) % 16 != 0:
-    ida_kernwin.warning(
-        "Invalid input length, each content id should be 16 characters long")
-    exit()
-
-dlc_list = []
-
-for i in range(0, len(extraDataText), 16):
-    dlc_list.append((extraDataText[i:i+16], True))
-
-for i in range(0, len(noExtraDataText), 16):
-    dlc_list.append((noExtraDataText[i:i+16], False))
-
-if len(dlc_list) > max_dlc_count:
-    raise Exception(f"Too many DLCs, max {max_dlc_count} is supported")
-
-patched_elf_output_path = idaapi.ask_file(
-    1, "eboot_patched.elf", "Save patched eboot (*.elf)")
-
-if patched_elf_output_path is None:
-    raise Exception("No output file selected")
-
-patched_prx_output_path = idaapi.ask_file(
-    1, "dlcldr.prx", "Save patched dlcldr (*.prx)")
-
-if patched_prx_output_path is None:
-    raise Exception("No output file selected")
-
-
-with open(input_file, "rb") as f:
-    with open(patched_elf_output_path, "wb") as g:
-        g.write(f.read())
-
-with open(patched_elf_output_path, "r+b") as f:
-    for patch in patches:
-        f.seek(patch[0])
-        f.write(patch[1])
-        print(
-            f"Replaced {patch[2]} at (real) offset {get_hex(patch[0])}")
-
-    t_realaddr = get_real_address(
-        unused_space_at_end_of_code_segment_bounds.unused_space_start - 1) + 1
-
-    f.seek(t_realaddr)
-    t_sanity_check = f.read(1)
-    if t_sanity_check != b'\x00':
-        raise Exception("Sanity check failed")
-    f.seek(t_realaddr)
-    f.write(prx_loader_with_path_and_terminator_bytes)
-
-    for patch in sceSysmoduleLoadModule_patches:
-        f.seek(get_real_address(patch[0]))
-        ret = f.read(1)
-        if ret not in [b'\xE8', b'\xE9']:
+        if len(libSceAppContent_nid_suffix) != len(libkernel_nid_suffix):
             raise Exception(
-                f"Expected jmp/call at {get_hex(patch[0])}, got opcode {ret.hex()}")
+                "libSceAppContent nid suffix length != libkernel nid suffix length")
 
-        # dont overwrite opcode (support jmp and call)
-        # since we read 1 byte we are after the opcode
-        f.write(format_displacement(
-            t_realaddr - get_real_address(patch[0]) - 5, 4))
-        print(
-            f"Patched call to sceSysmoduleLoadModule ida: {get_hex(patch[0])} | real: {get_hex(get_real_address(patch[0]))}")
+        t_newnid = calculateNID("sceKernelLoadStartModule") + libkernel_nid_suffix
+        patches.append(
+            (sceAppContentInitialize_nid_pos, t_newnid.encode("ascii"), f"sceAppContentInitialize to sceKernelLoadStartModule nid [{t_newnid}]"))
 
-    for patch in sceAppContentInitialize_patches:
-        f.seek(get_real_address(patch.frm))
-        if patch.type is idaapi.fl_JN:
-            # read first byte and check if its e9
-            # the ff in the function loader is also a jmp near
-            f.seek(get_real_address(patch.frm))
+
+    extraDataText = ""
+    noExtraDataText = ""
+
+    f = DlcContentIDInputForm(extraDataText, noExtraDataText)
+    f.show_and_wait()
+
+    extraDataText = f.txtLeft.value.replace(" ", "").replace(
+        "\n", "").replace("\r", "").replace("\t", "")
+    noExtraDataText = f.txtRight.value.replace(" ", "").replace(
+        "\n", "").replace("\r", "").replace("\t", "")
+
+
+    if len(extraDataText + noExtraDataText) == 0:
+        raise Exception("No content ids entered")
+
+    if len(extraDataText) % 16 != 0 or len(noExtraDataText) % 16 != 0:
+        raise Exception("Invalid input length, each content id should be 16 characters long")
+
+    dlc_list = []
+
+    for i in range(0, len(extraDataText), 16):
+        dlc_list.append((extraDataText[i:i+16], True))
+
+    for i in range(0, len(noExtraDataText), 16):
+        dlc_list.append((noExtraDataText[i:i+16], False))
+
+    if len(dlc_list) > max_dlc_count:
+        raise Exception(f"Too many DLCs, max {max_dlc_count} is supported")
+
+    patched_elf_output_path = idaapi.ask_file(
+        1, "eboot_patched.elf", "Save patched eboot (*.elf)")
+
+    if patched_elf_output_path is None:
+        raise Exception("No output file selected")
+
+    patched_prx_output_path = idaapi.ask_file(
+        1, "dlcldr.prx", "Save patched dlcldr (*.prx)")
+
+    if patched_prx_output_path is None:
+        raise Exception("No output file selected")
+
+
+    with open(input_file, "rb") as f:
+        with open(patched_elf_output_path, "wb") as g:
+            g.write(f.read())
+
+    with open(patched_elf_output_path, "r+b") as f:
+        for patch in patches:
+            f.seek(patch[0])
+            f.write(patch[1])
+            print(
+                f"Replaced {patch[2]} at (real) offset {get_hex(patch[0])}")
+
+        t_realaddr = get_real_address(
+            unused_space_at_end_of_code_segment_bounds.unused_space_start - 1) + 1
+
+        f.seek(t_realaddr)
+        t_sanity_check = f.read(1)
+        if t_sanity_check != b'\x00':
+            raise Exception("Sanity check failed")
+        f.seek(t_realaddr)
+        f.write(prx_loader_with_path_and_terminator_bytes)
+
+        for patch in sceSysmoduleLoadModule_patches:
+            f.seek(get_real_address(patch[0]))
             ret = f.read(1)
-            if ret != b'\xE9':
-                continue
+            if ret not in [b'\xE8', b'\xE9']:
+                raise Exception(
+                    f"Expected jmp/call at {get_hex(patch[0])}, got opcode {ret.hex()}")
+
+            # dont overwrite opcode (support jmp and call)
+            # since we read 1 byte we are after the opcode
+            f.write(format_displacement(
+                t_realaddr - get_real_address(patch[0]) - 5, 4))
+            print(
+                f"Patched call to sceSysmoduleLoadModule ida: {get_hex(patch[0])} | real: {get_hex(get_real_address(patch[0]))}")
+
+        for patch in sceAppContentInitialize_patches:
             f.seek(get_real_address(patch.frm))
-            # compiler optimization? (putting jmp to a function at the end of a function)
-            # i only saw this in dead cells
-            # xor eax, eax
-            # nop
-            # nop
-            # ret
-            f.write(b'\x31\xC0\x90\x90\xC3')
-        else:
-            f.write(b'\xB8\x00\x00\x00\x00')
-        print(
-            f"Patched call to sceAppContentInitialize ida: {get_hex(patch.frm)} | real: {get_hex(get_real_address(patch.frm))}")
+            if patch.type is idaapi.fl_JN:
+                # read first byte and check if its e9
+                # the ff in the function loader is also a jmp near
+                f.seek(get_real_address(patch.frm))
+                ret = f.read(1)
+                if ret != b'\xE9':
+                    continue
+                f.seek(get_real_address(patch.frm))
+                # compiler optimization? (putting jmp to a function at the end of a function)
+                # i only saw this in dead cells
+                # xor eax, eax
+                # nop
+                # nop
+                # ret
+                f.write(b'\x31\xC0\x90\x90\xC3')
+            else:
+                f.write(b'\xB8\x00\x00\x00\x00')
+            print(
+                f"Patched call to sceAppContentInitialize ida: {get_hex(patch.frm)} | real: {get_hex(get_real_address(patch.frm))}")
 
-with open(patched_prx_output_path, "wb") as f:
-    f.seek(0)
+    with open(patched_prx_output_path, "wb") as f:
+        f.seek(0)
 
-    decoded_bytes = base64.b64decode(dlcldr_prx_gz_base64)
+        decoded_bytes = base64.b64decode(dlcldr_prx_gz_base64)
 
-    decompressed_bytes = gzip.decompress(decoded_bytes)
+        decompressed_bytes = gzip.decompress(decoded_bytes)
 
-    f.write(decompressed_bytes)
+        f.write(decompressed_bytes)
 
-    f.seek(dlcldr_prx_dlc_count_offset)
-    f.write(format_displacement(len(dlc_list), 4))
+        f.seek(dlcldr_prx_dlc_count_offset)
+        f.write(format_displacement(len(dlc_list), 4))
 
-    f.seek(dlcldr_prx_dlc_data_offset)
+        f.seek(dlcldr_prx_dlc_data_offset)
 
-    for dlc in dlc_list:
-        # typedef struct SceNpUnifiedEntitlementLabel
-        # {
-        #     char data[SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE];
-        #     char padding[3];
-        # } SceNpUnifiedEntitlementLabel;
-        f.write(dlc[0].encode("ascii"))  # 16 bytes
-        f.write(b"\x00\x00\x00\x00")  # null terminate + 3 padding
-        f.write(format_displacement(4 if dlc[1] else 0, 4))
+        for dlc in dlc_list:
+            # typedef struct SceNpUnifiedEntitlementLabel
+            # {
+            #     char data[SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE];
+            #     char padding[3];
+            # } SceNpUnifiedEntitlementLabel;
+            f.write(dlc[0].encode("ascii"))  # 16 bytes
+            f.write(b"\x00\x00\x00\x00")  # null terminate + 3 padding
+            f.write(format_displacement(4 if dlc[1] else 0, 4))
 
 
-print("Patched file saved.")
-ida_kernwin.info("Patching complete")
+    print("Patched file saved.")
+    ida_kernwin.info("Patching complete")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        ida_kernwin.warning(f"Error: {e}\nExiting...")
