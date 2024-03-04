@@ -929,6 +929,14 @@ def main():
     # appcontent and appcontentutil are required
     if not replacements[0][2] or not replacements[1][2]:
         raise Exception("Not all module/library names found for replacement")
+    
+    # if sceAppContentGetAddcontInfo or sceAppContentGetAddcontInfoList isnt found then error
+    t_addcontinfo = next((x for x in function_symbols_with_real_and_fake_nids if x[0] == "sceAppContentGetAddcontInfo"), None)
+    t_addcontinfolist = next((x for x in function_symbols_with_real_and_fake_nids if x[0] == "sceAppContentGetAddcontInfoList"), None)
+    print (t_addcontinfo)
+    print (t_addcontinfolist)
+    if (t_addcontinfo is not None and not t_addcontinfo[3]) and (t_addcontinfolist is not None and not t_addcontinfolist[3]):
+        raise Exception("sceAppContentGetAddcontInfo or sceAppContentGetAddcontInfoList not found.\nThis likely means the game uses the NpEntitlementAccess library which is not yet supported or something went wrong during disassembly")
 
     nid_patches_count = sum(bool(x[3])
                             for x in function_symbols_with_real_and_fake_nids)
