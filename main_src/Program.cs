@@ -589,6 +589,7 @@ internal class Program
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetAddcontInfo"),
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetEntitlementKey"),
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentAddcontMount"),
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentAppParamGetInt"),
     ];
 
     private static readonly string[] importantEntitlementAccessSymbols = [
