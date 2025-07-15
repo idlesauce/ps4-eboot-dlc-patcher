@@ -22,6 +22,18 @@ internal class Program
             Environment.Exit(1);
         };
 
+        /* ─────────────────────────────────────────────────────────────── */
+        /*  CLI short-circuit                                              */
+        /* ─────────────────────────────────────────────────────────────── */
+        if (args.Length > 0 &&
+            !args[0].EndsWith(".pkg", StringComparison.OrdinalIgnoreCase) &&
+            !args[0].EndsWith(".elf", StringComparison.OrdinalIgnoreCase) &&
+            !args[0].Equals("interactive", StringComparison.OrdinalIgnoreCase))
+        {
+            Environment.Exit(await Cli.InvokeAsync(args));   // ⇢ System.CommandLine
+            return;                                          // defensive – never reached
+        }
+
         var panel = new Panel(new Markup("[b]PS4 EBOOT DLC Patcher[/]").Centered());
         panel.Border = BoxBorder.Rounded;
         panel.Expand();
@@ -352,6 +364,53 @@ internal class Program
         Code.Jmp_m1632,
         Code.Jmp_m1664,
     ];
+
+    internal static async Task<int> PatchExecutablesNonInteractive(
+    IReadOnlyList<string> executables,
+    IReadOnlyList<string> dlcPkgs,
+    string outputDir,
+    bool forceInEboot = false)
+    {
+        var dlcInfos = dlcPkgs
+            .Select(DlcInfo.FromDlcPkg)
+            .OrderByDescending(d => d.Type == DlcInfo.DlcType.PSAC)   // PSAC first
+            .ToList();
+
+        Directory.CreateDirectory(outputDir);
+
+        foreach (var exe in executables)
+        {
+            ConsoleUi.LogInfo($"Patching {exe}");
+            await PatchExecutable(exe, outputDir, dlcInfos, forceInEboot);
+            ConsoleUi.LogSuccess($"Finished {exe}");
+        }
+
+        ConsoleUi.LogSuccess($"All patched – output → {outputDir}");
+        return 0;
+    }
+
+    internal static async Task<int> ExtractDlcsNonInteractive(
+        string image0Dir,
+        IReadOnlyList<string> dlcPkgs)
+    {
+        Directory.CreateDirectory(image0Dir);
+
+        int i = 0;
+        foreach (var pkg in dlcPkgs)
+        {
+            var target = Path.Combine(image0Dir, $"dlc{i:D2}");
+            await ExtractPkgImage0ToPathAsync(pkg, target);
+            i++;
+        }
+
+        ConsoleUi.LogSuccess($"Extracted {i} DLCs → {image0Dir}");
+        return 0;
+    }
+
+    /// <summary>
+    /// Convenience wrapper for CLI’s <c>list-dlc</c> command.
+    /// </summary>
+    internal static DlcInfo? TryParseDlc(string pkg) => DlcInfo.FromDlcPkg(pkg);
 
     private static async Task PatchExecutable(string inputPath, string outputDir, List<DlcInfo> dlcList, bool forceInEboot = false)
     {
